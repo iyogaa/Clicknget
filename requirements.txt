@@ -1,0 +1,34 @@
+# Core Streamlit and PDF Processing
+streamlit
+PyPDF2
+pymupdf  # Alternative PDF processor (faster than PyPDF2)
+pdf2image
+pytesseract
+Pillow
+
+# Data Processing
+pandas
+numpy
+openpyxl  # For Excel support
+python-dateutil
+pytz
+
+# Text Processing and Search
+python-Levenshtein
+fuzzywuzzy
+scikit-learn
+altair
+
+# Visualization
+matplotlib
+plotly
+# pydeck  # not used in code
+
+# Streamlit Extensions
+# streamlit-aggrid  # not used in code
+# streamlit-lottie  # not used in code
+
+# Other Utilities
+requests
+joblib
+
