@@ -284,3 +284,28 @@ elif menu == "Supplement":
                             st.warning(error)
                     else:
                         st.warning("No results found for your query.")
+elif menu == "PDF Maker":
+    uploaded = st.file_uploader("Upload PDF", type=["pdf"])
+
+    if uploaded:
+        temp_input = "uploaded.pdf"
+        with open(temp_input, "wb") as f:
+            f.write(uploaded.read())
+
+        if st.button("Process PDF"):
+            st.info("Processing... bruhh...")
+
+            output_file = "flattened.pdf"
+            process_pdf(temp_input, output_file)
+
+            with open(output_file, "rb") as f:
+                st.download_button(
+                    "Download Processed PDF",
+                    f,
+                    file_name="flattened.pdf",
+                    mime="application/pdf"
+                )
+
+            # cleanup
+            os.remove(temp_input)
+            os.remove(output_file)
