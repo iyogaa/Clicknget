@@ -7,6 +7,7 @@ from processor import PDFTextSearcher
 import os
 import tempfile
 import user_metrics
+from Pdf_maker import process_pdf
 
 # Set page configuration
 st.set_page_config(layout="wide")
