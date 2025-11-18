@@ -1,10 +1,7 @@
 import fitz  # PyMuPDF
-from pdf2image import convert_from_path
-import img2pdf
 import os
-import tempfile
 
-# Step 1: Flatten checkboxes using PyMuPDF
+# Step 1: Flatten checkboxes
 def fix_checkboxes(input_path, output_path):
     doc = fitz.open(input_path)
 
@@ -36,26 +33,19 @@ def fix_checkboxes(input_path, output_path):
     doc.save(output_path)
     doc.close()
 
-# Step 2: Convert to non-editable PDF using pdf2image + img2pdf
+# Step 2: Render each page as image and reassemble into a new PDF
 def convert_to_non_editable(input_path, output_path):
-    images = convert_from_path(
-        input_path,
-        dpi=300,
-        fmt="png",
-        poppler_path=None  # Use system-installed Poppler (works on Streamlit Cloud)
-    )
+    doc = fitz.open(input_path)
+    new_pdf = fitz.open()
 
-    temp_files = []
-    for img in images:
-        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        img.convert("RGB").save(temp.name, "PNG")
-        temp_files.append(temp.name)
+    for page in doc:
+        pix = page.get_pixmap(dpi=300)
+        img_pdf = fitz.open("pdf", pix.tobytes("png"))
+        new_pdf.insert_pdf(img_pdf)
 
-    with open(output_path, "wb") as f:
-        f.write(img2pdf.convert(temp_files))
-
-    for tmp in temp_files:
-        os.remove(tmp)
+    new_pdf.save(output_path)
+    new_pdf.close()
+    doc.close()
 
 # Step 3: Full pipeline
 def process_pdf(input_file, output_file):
