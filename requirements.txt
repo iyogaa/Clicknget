@@ -31,4 +31,9 @@ plotly
 # Other Utilities
 requests
 joblib
+streamlit
+pymupdf
+pdf2image
 img2pdf
+Pillow
+
