@@ -3,7 +3,6 @@ from pdf2image import convert_from_path
 import img2pdf
 import os
 
-
 def fix_checkboxes(input_path, output_path):
     doc = fitz.open(input_path)
 
@@ -37,14 +36,11 @@ def fix_checkboxes(input_path, output_path):
 
 
 def convert_to_non_editable(input_path, output_path):
-    POPPLER_PATH = r"C:\poppler\Library\bin"
-
+    # Streamlit Cloud already has Poppler installed
     images = convert_from_path(
         input_path,
         dpi=300,
-        fmt="png",
-        use_pdftocairo=True,
-        poppler_path=POPPLER_PATH
+        fmt="png"
     )
 
     temp_files = []
