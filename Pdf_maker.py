@@ -42,7 +42,7 @@ def convert_to_non_editable(input_path, output_path):
         pix = page.get_pixmap(dpi=150)  # Lower DPI for smaller size
         rect = fitz.Rect(0, 0, pix.width, pix.height)
         new_page = new_pdf.new_page(width=pix.width, height=pix.height)
-        new_page.insert_image(rect, stream=pix.tobytes("jpeg"), compress=True)
+        new_page.insert_image(rect, stream=pix.tobytes("jpeg"))  # No compress arg needed
 
     new_pdf.save(output_path, deflate=True)  # Enable PDF-level compression
     new_pdf.close()
