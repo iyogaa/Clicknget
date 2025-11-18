@@ -31,4 +31,4 @@ plotly
 # Other Utilities
 requests
 joblib
-
+img2pdf
