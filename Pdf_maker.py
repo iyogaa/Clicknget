@@ -33,15 +33,16 @@ def fix_checkboxes(input_path, output_path):
     doc.save(output_path)
     doc.close()
 
-# Step 2: Render each page as image and reassemble into a new PDF
+# Step 2: Render each page as image and reinsert into a new PDF
 def convert_to_non_editable(input_path, output_path):
     doc = fitz.open(input_path)
     new_pdf = fitz.open()
 
     for page in doc:
         pix = page.get_pixmap(dpi=300)
-        img_pdf = fitz.open("pdf", pix.tobytes("png"))
-        new_pdf.insert_pdf(img_pdf)
+        rect = fitz.Rect(0, 0, pix.width, pix.height)
+        new_page = new_pdf.new_page(width=pix.width, height=pix.height)
+        new_page.insert_image(rect, stream=pix.tobytes("png"))
 
     new_pdf.save(output_path)
     new_pdf.close()
