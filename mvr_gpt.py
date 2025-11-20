@@ -62,7 +62,7 @@ def mvr_gpt_app():
         "lic", "fine", "court", "suspension", "misc", "sticker", "tags", "miscellaneous",
         "background check", "notice", "seat belt", "insurance", "certificate",
         "weighing", "loading", "length", "carrying", "loads", "susp", "seatbelt",
-        "failure to signal", "illegal stop", "obstructing traffic","law"
+        "failure to signal", "illegal stop", "obstructing traffic"
     ]
     non_moving_keywords = [kw.lower() for kw in non_moving_keywords]
 
@@ -112,4 +112,5 @@ def mvr_gpt_app():
             st.success("🐉 **Dragon Warrior** 🐼")
         else:
             result = classify_violation(user_input)
+
             st.info(result)
