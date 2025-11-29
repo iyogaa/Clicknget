@@ -169,6 +169,56 @@ class Alltrans:
             return (m_tokens[0] in " ".join(l_tokens)) and (m_tokens[-1] in " ".join(l_tokens))
         return m_tokens[0] in " ".join(l_tokens)
 
+    def _score_name_match(self, a, b):
+        a_tokens = self._normalize_tokens(a)
+        b_tokens = self._normalize_tokens(b)
+        if not a_tokens or not b_tokens:
+            return 0
+        overlap = self._name_token_overlap(a_tokens, b_tokens)
+        score = overlap
+        a_norm = " ".join(a_tokens)
+        b_norm = " ".join(b_tokens)
+        if a_norm == b_norm:
+            score += 3
+        if len(a_tokens) >= 2:
+            if (a_tokens[0] in " ".join(b_tokens)) and (a_tokens[-1] in " ".join(b_tokens)):
+                score += 2
+        return score
+
+    def _extract_first_last(self, name_std):
+        if name_std is None:
+            return "", ""
+        toks = [t for t in str(name_std).split() if t]
+        if not toks:
+            return "", ""
+        first = toks[0]
+        i = len(toks) - 1
+        last = toks[i]
+        connectors = {"DE","LA","DEL","DELA","DA","VAN","VON","DI","AL","BIN","BINTI","MC","MAC","ST"}
+        while i - 1 >= 0 and toks[i-1] in connectors:
+            last = toks[i-1] + " " + last
+            i -= 1
+        return first, last
+
+    def _first_last_equal(self, a_std, b_std):
+        af, al = self._extract_first_last(a_std)
+        bf, bl = self._extract_first_last(b_std)
+        return (af == bf and al == bl) or (af == bl and al == bf)
+
+    def _tokens_clean(self, name_std):
+        if not name_std:
+            return []
+        toks = [t for t in str(name_std).split() if t]
+        connectors = {"DE","LA","DEL","DELA","DA","VAN","VON","DI","AL","BIN","BINTI","MC","MAC","ST"}
+        return [t for t in toks if t not in connectors]
+
+    def _client_tokens_subset(self, raw_std, client_std):
+        raw_tokens = set(self._tokens_clean(raw_std))
+        client_tokens = [t for t in self._tokens_clean(client_std)]
+        if not raw_tokens or not client_tokens:
+            return False
+        return all(t in raw_tokens for t in client_tokens)
+
     def _find_cdl_col(self, cols, sample_df=None):
         candidates = ["CDL Number", "CDLNumber", "CDL No", "CDL", "CDL_Number", "License Number", "License Num", "License No", "Driver License Number", "Driver License", "License", "Drivers License Number", "DL Number", "DL No"]
         for c in candidates:
@@ -220,6 +270,53 @@ class Alltrans:
         except Exception:
             return None
 
+    def _std_upper(self, s):
+        if s is None:
+            return ""
+        try:
+            import unicodedata
+            x = unicodedata.normalize('NFKD', str(s)).encode('ascii', 'ignore').decode('ascii')
+        except Exception:
+            x = str(s)
+        x = x.upper().strip()
+        x = re.sub(r"[_]+", " ", x)
+        x = re.sub(r"[^A-Z0-9\s]", "", x)
+        # remove common prefixes/suffixes like MR, MRS, MS, DR, JR, SR, II, III, IV
+        tokens = [t for t in re.split(r"\s+", x) if t]
+        drop = {"MR","MRS","MS","DR","JR","SR","II","III","IV"}
+        tokens = [t for t in tokens if t not in drop]
+        x = " ".join(tokens)
+        x = re.sub(r"\s+", " ", x).strip()
+        return x
+
+    def _dob_iso(self, val):
+        if val is None:
+            return None
+        try:
+            v = val
+            if isinstance(v, str) and v.startswith("'"):
+                v = v[1:]
+            ts = pd.to_datetime(v, errors="coerce")
+            if pd.isna(ts):
+                ts = pd.to_datetime(v, errors="coerce", dayfirst=True)
+            if pd.isna(ts):
+                return None
+            return ts.strftime("%Y-%m-%d")
+        except Exception:
+            return None
+
+    def _build_full_name(self, row, cols):
+        vals = []
+        for col in cols:
+            if col and col in row and row.get(col) is not None and str(row.get(col)).strip() != "":
+                vals.append(self._std_upper(row.get(col)))
+        return " ".join([v for v in vals if v]).strip()
+
+    def _date_equal(self, a, b):
+        ai = self._dob_iso(a)
+        bi = self._dob_iso(b)
+        return ai is not None and bi is not None and ai == bi
+
     def _clean_cdl_key(self, key: str) -> str:
         """Normalize a CDL key by removing unwanted characters, stripping leading zeros
         from the numeric portion, and standardizing a two-letter state code to the
@@ -235,6 +332,11 @@ class Alltrans:
         s2 = re.sub(r'[^A-Z0-9]', '', s)
         if s2 == "":
             return ""
+        # heuristic: correct common OCR confusions before digit extraction
+        ocr_map = str.maketrans({
+            'O': '0', 'I': '1', 'L': '1', 'S': '5', 'B': '8', 'Z': '2'
+        })
+        s2 = s2.translate(ocr_map)
         # detect two-letter state at start or end
         state = ""
         num = s2
@@ -340,24 +442,32 @@ class Alltrans:
         lookup_small = lookup_df.drop_duplicates("_cdl_key", keep="first").copy()
         lookup_rows = lookup_df.to_dict(orient="records")
 
-        # normalize lookup rows: name, dob (MM/DD/YYYY string), keep hire raw
         for r in lookup_rows:
             r["_cdl_key_norm"] = str(r.get("_cdl_key", "")).strip()
-            r["_lookup_name"] = ""
-            r["_lookup_dob"] = None
-            for c in lookup_df.columns:
-                if "name" in str(c).lower() and (r.get(c) is not None and str(r.get(c)).strip() != ""):
-                    r["_lookup_name"] = r.get(c)
-                    break
-            for c in lookup_df.columns:
-                if any(k in str(c).lower() for k in ("dob","date of birth","birth")):
-                    try:
-                        dt = pd.to_datetime(r.get(c), errors="coerce")
-                        r["_lookup_dob"] = dt.strftime("%m/%d/%Y") if not pd.isna(dt) else None
-                    except Exception as e:
-                        self.logger.debug("Failed parsing lookup DOB for column %s row: %s", c, e, exc_info=True)
-                        r["_lookup_dob"] = None
-                    break
+            first_col = next((c for c in lookup_df.columns if "first" in str(c).lower()), None)
+            middle_col = next((c for c in lookup_df.columns if "middle" in str(c).lower()), None)
+            last_col = next((c for c in lookup_df.columns if "last" in str(c).lower()), None)
+            name_col = next((c for c in lookup_df.columns if "name" in str(c).lower()), None)
+            parts = []
+            if first_col:
+                parts.append(first_col)
+            if middle_col:
+                parts.append(middle_col)
+            if last_col:
+                parts.append(last_col)
+            built = self._build_full_name(r, parts) if parts else None
+            raw_name = r.get(name_col) if name_col else None
+            use_name = raw_name if (raw_name is not None and str(raw_name).strip() != "") else built
+            r["_lookup_name"] = use_name
+            r["_lookup_fullname_std"] = self._std_upper(use_name) if use_name else ""
+            dob_col = next((c for c in lookup_df.columns if any(k in str(c).lower() for k in ("dob","date of birth","birth"))), None)
+            dob_val = r.get(dob_col) if dob_col else None
+            try:
+                dt = pd.to_datetime(dob_val, errors="coerce")
+                r["_lookup_dob"] = dt.strftime("%m/%d/%Y") if not pd.isna(dt) else None
+            except Exception:
+                r["_lookup_dob"] = None
+            r["_lookup_dob_iso"] = self._dob_iso(dob_val)
             r["_hire_raw"] = r.get(hire_col_lookup)
 
         # build direct CDL map
@@ -408,6 +518,9 @@ class Alltrans:
             return None
 
         driver_col = pick(["Driver Full Name","DriverFullName","Name of Driver","Driver"])
+        first_col_main = pick(["First Name","First","Driver First Name"]) or next((c for c in cols if "first" in str(c).lower()), None)
+        middle_col_main = pick(["Middle Name","Middle"]) or next((c for c in cols if "middle" in str(c).lower()), None)
+        last_col_main = pick(["Last Name","Last","Driver Last Name"]) or next((c for c in cols if "last" in str(c).lower()), None)
         dob_col = pick(["Driver Date of Birth","Date of birth","DOB"])
         cdl_type_col = pick(["CDL Type","CDLType","Lic Class","License Class"])
         lic_state_col = pick(["License State","LicenseState","State"])
@@ -424,7 +537,11 @@ class Alltrans:
             group = grouped.get_group(key) if key in grouped.groups else pd.DataFrame(columns=df_main_clean.columns)
             rec = {}
             rec["_cdl_key"] = key
-            rec["Driver Full Name"] = group[driver_col].dropna().astype(str).iloc[0] if (driver_col in group and not group[driver_col].dropna().empty) else None
+            name_val = group[driver_col].dropna().astype(str).iloc[0] if (driver_col in group and not group[driver_col].dropna().empty) else None
+            if not name_val:
+                row0 = group.iloc[0].to_dict() if len(group) > 0 else {}
+                name_val = self._build_full_name(row0, [first_col_main, middle_col_main, last_col_main]) if any([first_col_main, middle_col_main, last_col_main]) else None
+            rec["Driver Full Name"] = name_val
             raw_dob = group[dob_col].dropna().iloc[0] if (dob_col in group and not group[dob_col].dropna().empty) else None
             try:
                 dt = pd.to_datetime(raw_dob, errors="coerce")
@@ -432,6 +549,8 @@ class Alltrans:
                 rec["Driver Date of Birth"] = f"{dob_norm}" if dob_norm else None
             except Exception:
                 rec["Driver Date of Birth"] = f"{str(raw_dob).strip()}" if raw_dob not in (None, "") else None
+            rec["_full_name_std"] = self._std_upper(rec.get("Driver Full Name")) if rec.get("Driver Full Name") else ""
+            rec["_dob_iso"] = self._dob_iso(rec.get("Driver Date of Birth"))
             rec["CDL Number"] = key
             rec["CDL Type"] = group[cdl_type_col].dropna().iloc[0] if (cdl_type_col in group and not group[cdl_type_col].dropna().empty) else None
             rec["Lic State"] = group[lic_state_col].dropna().iloc[0] if (lic_state_col in group and not group[lic_state_col].dropna().empty) else None
@@ -461,18 +580,33 @@ class Alltrans:
             doh_raw = None
             matched_by = None
             found = None
+            m_name_std = rec.get("_full_name_std")
+            m_dob_iso = rec.get("_dob_iso")
             # Attempt matching by CDL; if it fails, try cleaned CDL; otherwise fallback to Name+DOB
             if cdl_key:
                 # direct exact match
                 if cdl_key in lookup_map:
-                    doh_raw = lookup_map.get(cdl_key)
-                    matched_by = "CDL"
-                    # mark all matching lookup rows for this key (usually one)
-                    idxs = lookup_key_to_indices.get(cdl_key, [])
-                    if idxs:
-                        i = idxs[0]
-                        matched_lookup_indices.add(i)
-                        lr = lookup_rows[i]
+                    candidate_idxs = lookup_key_to_indices.get(cdl_key, [])
+                    if candidate_idxs:
+                        best_i = None
+                        best_score = -1
+                        for i in candidate_idxs:
+                            lr = lookup_rows[i]
+                            lk_name_std = lr.get("_lookup_fullname_std")
+                            lk_dob_iso = lr.get("_lookup_dob_iso")
+                            score = 0
+                            if m_dob_iso and lk_dob_iso and m_dob_iso == lk_dob_iso:
+                                score += 5
+                            score += self._score_name_match(m_name_std, lk_name_std)
+                            if score > best_score:
+                                best_score = score
+                                best_i = i
+                        if best_i is None:
+                            best_i = candidate_idxs[0]
+                        lr = lookup_rows[best_i]
+                        doh_raw = lr.get(hire_col_lookup)
+                        matched_by = "CDL"
+                        matched_lookup_indices.add(best_i)
                         lookup_dob = lr.get("_lookup_dob")
                         cur_dob = rec.get("Driver Date of Birth")
                         if (cur_dob is None or (isinstance(cur_dob, float) and pd.isna(cur_dob)) or (isinstance(cur_dob, str) and str(cur_dob).strip() == "")):
@@ -485,13 +619,27 @@ class Alltrans:
                     except Exception:
                         cclean = ""
                     if cclean and cclean in lookup_map_clean:
-                        doh_raw = lookup_map_clean.get(cclean)
-                        matched_by = "CDL (cleaned)"
-                        idxs = lookup_key_to_indices.get(cclean, [])
-                        if idxs:
-                            i = idxs[0]
-                            matched_lookup_indices.add(i)
-                            lr = lookup_rows[i]
+                        candidate_idxs = lookup_key_to_indices.get(cclean, [])
+                        if candidate_idxs:
+                            best_i = None
+                            best_score = -1
+                            for i in candidate_idxs:
+                                lr = lookup_rows[i]
+                                lk_name_std = lr.get("_lookup_fullname_std")
+                                lk_dob_iso = lr.get("_lookup_dob_iso")
+                                score = 0
+                                if m_dob_iso and lk_dob_iso and m_dob_iso == lk_dob_iso:
+                                    score += 5
+                                score += self._score_name_match(m_name_std, lk_name_std)
+                                if score > best_score:
+                                    best_score = score
+                                    best_i = i
+                            if best_i is None:
+                                best_i = candidate_idxs[0]
+                            lr = lookup_rows[best_i]
+                            doh_raw = lr.get(hire_col_lookup)
+                            matched_by = "CDL (cleaned)"
+                            matched_lookup_indices.add(best_i)
                             lookup_dob = lr.get("_lookup_dob")
                             cur_dob = rec.get("Driver Date of Birth")
                             if (cur_dob is None or (isinstance(cur_dob, float) and pd.isna(cur_dob)) or (isinstance(cur_dob, str) and str(cur_dob).strip() == "")):
@@ -500,16 +648,14 @@ class Alltrans:
                     else:
                         # fallback to Name+DOB flexible matching
                         m_name = rec.get("Driver Full Name")
-                        m_dob_str = rec.get("Driver Date of Birth")
-                        m_dob_compare = m_dob_str[1:] if (isinstance(m_dob_str, str) and m_dob_str.startswith("'")) else m_dob_str
                         found = None
                         for i, lr in enumerate(lookup_rows):
                             if i in matched_lookup_indices:
                                 continue
-                            lk_name = lr.get("_lookup_name") or lr.get(next((c for c in lookup_df.columns if "driver" in str(c).lower()), None), "")
-                            lk_dob_str = lr.get("_lookup_dob")
+                            lk_name_std = lr.get("_lookup_fullname_std")
+                            lk_dob = lr.get("_lookup_dob")
                             try:
-                                if self._name_dob_flexible_match(m_name, m_dob_compare, lk_name, lk_dob_str):
+                                if self._date_equal(rec.get("Driver Date of Birth"), lk_dob) and self._client_tokens_subset(m_name_std, lk_name_std):
                                     found = (i, lr)
                                     break
                             except Exception as e:
@@ -522,7 +668,7 @@ class Alltrans:
                             fallback_matches.append({
                                 "MVR_CDL": cdl_key or None,
                                 "Driver": rec.get("Driver Full Name"),
-                                "MVR_DOB": m_dob_compare,
+                                "MVR_DOB": rec.get("Driver Date of Birth"),
                                 "Matched Lookup CDL": lr.get("_cdl_key_norm"),
                                 "Matched Lookup Name": lr.get("_lookup_name"),
                                 "Matched Hire Raw": doh_raw
@@ -539,16 +685,14 @@ class Alltrans:
             else:
                 # no CDL present; try Name+DOB fallback
                 m_name = rec.get("Driver Full Name")
-                m_dob_str = rec.get("Driver Date of Birth")
-                m_dob_compare = m_dob_str[1:] if (isinstance(m_dob_str, str) and m_dob_str.startswith("'")) else m_dob_str
                 found = None
                 for i, lr in enumerate(lookup_rows):
                     if i in matched_lookup_indices:
                         continue
-                    lk_name = lr.get("_lookup_name") or lr.get(next((c for c in lookup_df.columns if "driver" in str(c).lower()), None), "")
-                    lk_dob_str = lr.get("_lookup_dob")
+                    lk_name_std = lr.get("_lookup_fullname_std")
+                    lk_dob = lr.get("_lookup_dob")
                     try:
-                        if self._name_dob_flexible_match(m_name, m_dob_compare, lk_name, lk_dob_str):
+                        if self._date_equal(rec.get("Driver Date of Birth"), lk_dob) and self._client_tokens_subset(m_name_std, lk_name_std):
                             found = (i, lr)
                             break
                     except Exception as e:
@@ -561,7 +705,7 @@ class Alltrans:
                     fallback_matches.append({
                         "MVR_CDL": cdl_key or None,
                         "Driver": rec.get("Driver Full Name"),
-                        "MVR_DOB": m_dob_compare,
+                        "MVR_DOB": rec.get("Driver Date of Birth"),
                         "Matched Lookup CDL": lr.get("_cdl_key_norm"),
                         "Matched Lookup Name": lr.get("_lookup_name"),
                         "Matched Hire Raw": doh_raw
@@ -658,7 +802,7 @@ class Alltrans:
                     val = None
                 elif h in ("notes",):
                     existing_notes = rec.get("Notes") or ""
-                    if (rec.get("MatchedBy") == "LookupOnly") or (pd.isna(rec.get("DOH_raw")) or rec.get("DOH_raw") is None or str(rec.get("DOH_raw")).strip() == ""):
+                    if rec.get("MatchedBy") == "LookupOnly":
                         if existing_notes:
                             val = f"{existing_notes} Missing MVR"
                         else:
