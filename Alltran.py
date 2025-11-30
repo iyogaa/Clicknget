@@ -9,6 +9,7 @@ import sys
 
 import pandas as pd
 from openpyxl import load_workbook
+import difflib
 
 class Alltrans:
     def __init__(self, template_path="Template.xlsx",
@@ -212,12 +213,56 @@ class Alltrans:
         connectors = {"DE","LA","DEL","DELA","DA","VAN","VON","DI","AL","BIN","BINTI","MC","MAC","ST"}
         return [t for t in toks if t not in connectors]
 
-    def _client_tokens_subset(self, raw_std, client_std):
-        raw_tokens = set(self._tokens_clean(raw_std))
-        client_tokens = [t for t in self._tokens_clean(client_std)]
-        if not raw_tokens or not client_tokens:
+    def _is_name_match(self, name_a, name_b):
+        tokens_a = self._tokens_clean(name_a)
+        tokens_b = self._tokens_clean(name_b)
+        
+        if not tokens_a or not tokens_b:
             return False
-        return all(t in raw_tokens for t in client_tokens)
+            
+        # Helper for fuzzy token matching
+        def get_fuzzy_matches(list_sub, list_super):
+            matches = 0
+            used_super_indices = set()
+            for t_sub in list_sub:
+                for i, t_super in enumerate(list_super):
+                    if i in used_super_indices:
+                        continue
+                    
+                    # 1. Exact Match
+                    if t_sub == t_super:
+                        matches += 1
+                        used_super_indices.add(i)
+                        break
+                    
+                    # 2. Initial Match (if one is single letter)
+                    # e.g. "K" matches "KRISHNAN"
+                    if len(t_sub) == 1 and len(t_super) > 1 and t_super.startswith(t_sub):
+                         matches += 1
+                         used_super_indices.add(i)
+                         break
+                    # Note: The reverse (t_super is single letter) is handled by the caller swapping lists
+
+                    # 3. Fuzzy Match
+                    if difflib.SequenceMatcher(None, t_sub, t_super).ratio() > 0.80:
+                        matches += 1
+                        used_super_indices.add(i)
+                        break
+            return matches
+
+        # Check overlap count
+        matches_a_in_b = get_fuzzy_matches(tokens_a, tokens_b)
+        matches_b_in_a = get_fuzzy_matches(tokens_b, tokens_a)
+        
+        # Subset condition: All tokens of A found in B, or all tokens of B found in A
+        if matches_a_in_b == len(tokens_a) or matches_b_in_a == len(tokens_b):
+            return True
+            
+        # Overlap condition: At least 2 tokens match (e.g. First Name and Last Name)
+        if matches_a_in_b >= 2:
+            return True
+            
+        return False
 
     def _find_cdl_col(self, cols, sample_df=None):
         candidates = ["CDL Number", "CDLNumber", "CDL No", "CDL", "CDL_Number", "License Number", "License Num", "License No", "Driver License Number", "Driver License", "License", "Drivers License Number", "DL Number", "DL No"]
@@ -239,7 +284,7 @@ class Alltrans:
         return None
 
     def _find_hire_col(self, cols):
-        candidates = ["Hire Date", "HireDate", "DOH", "Date of Hire", "Hire_Date", "Driver Hire Date", "Driver Hire date", "Hire date", "Date Hired", "Employment Date", "Start Date", "Hire Date"]
+        candidates = ["Hire Date", "HireDate", "DOH", "Date of Hire", "Hire_Date", "Driver Hire Date", "Driver Hire date", "Hire date", "Date Hired", "Employment Date", "Start Date", "Hire Date", "Date of Join", "Joining Date", "Join Date"]
         for c in candidates:
             for col in cols:
                 if col.strip().lower() == c.strip().lower():
@@ -280,7 +325,8 @@ class Alltrans:
             x = str(s)
         x = x.upper().strip()
         x = re.sub(r"[_]+", " ", x)
-        x = re.sub(r"[^A-Z0-9\s]", "", x)
+        # Replace non-alphanumeric with space to preserve token separation (e.g. Smith-Jones -> SMITH JONES)
+        x = re.sub(r"[^A-Z0-9\s]", " ", x)
         # remove common prefixes/suffixes like MR, MRS, MS, DR, JR, SR, II, III, IV
         tokens = [t for t in re.split(r"\s+", x) if t]
         drop = {"MR","MRS","MS","DR","JR","SR","II","III","IV"}
@@ -334,7 +380,7 @@ class Alltrans:
             return ""
         # heuristic: correct common OCR confusions before digit extraction
         ocr_map = str.maketrans({
-            'O': '0', 'I': '1', 'L': '1', 'S': '5', 'B': '8', 'Z': '2'
+            'O': '0', 'I': '1', 'L': '1', 'S': '5', 'B': '8', 'Z': '2', 'G': '6'
         })
         s2 = s2.translate(ocr_map)
         # detect two-letter state at start or end
@@ -363,8 +409,8 @@ class Alltrans:
             return f"{num_digits}-{state}"
         return num_digits
 
-    # ---------------- Core run ----------------
-    def run(self, main_bytes: bytes, lookup_bytes: bytes, chosen_lookup_sheet: str = None, preview_rows: int = 8):
+    # ---------------- Core Logic ----------------
+    def process_data(self, main_bytes: bytes, lookup_bytes: bytes, chosen_lookup_sheet: str = None, preview_rows: int = 8):
         # load main workbook (openpyxl) for replication
         main_wb = load_workbook(io.BytesIO(main_bytes), data_only=False)
         if self.MVR_PREFERRED_NAME in main_wb.sheetnames:
@@ -431,11 +477,18 @@ class Alltrans:
         lookup_cols = list(lookup_df.columns)
         cdl_col_lookup = self._find_cdl_col(lookup_cols, sample_df=lookup_df)
         hire_col_lookup = self._find_hire_col(lookup_cols)
-        if cdl_col_lookup is None or hire_col_lookup is None:
-            raise ValueError("Could not detect CDL or Hire columns in lookup automatically.")
+        if hire_col_lookup is None:
+            raise ValueError("Could not detect Hire Date column in lookup automatically.")
+        
+        if cdl_col_lookup is None:
+            self.logger.warning("Could not detect CDL column in lookup. CDL matching will be skipped.")
 
         # normalize lookup keys and detect duplicates
-        lookup_df["_cdl_key"] = lookup_df[cdl_col_lookup].astype(str).str.strip()
+        if cdl_col_lookup:
+            lookup_df["_cdl_key"] = lookup_df[cdl_col_lookup].astype(str).str.strip()
+        else:
+            lookup_df["_cdl_key"] = ""
+
         dup_mask = lookup_df["_cdl_key"].duplicated(keep=False)
         dupe_rows = lookup_df[dup_mask].copy()
         dupe_summary = dupe_rows["_cdl_key"].value_counts().to_dict() if not dupe_rows.empty else {}
@@ -444,22 +497,50 @@ class Alltrans:
 
         for r in lookup_rows:
             r["_cdl_key_norm"] = str(r.get("_cdl_key", "")).strip()
-            first_col = next((c for c in lookup_df.columns if "first" in str(c).lower()), None)
-            middle_col = next((c for c in lookup_df.columns if "middle" in str(c).lower()), None)
-            last_col = next((c for c in lookup_df.columns if "last" in str(c).lower()), None)
-            name_col = next((c for c in lookup_df.columns if "name" in str(c).lower()), None)
+            
+            # Identify name columns more carefully
+            cols_lower = {c: str(c).lower().strip() for c in lookup_df.columns}
+            
+            first_col = next((c for c, cl in cols_lower.items() if "first" in cl and "name" in cl), None)
+            if not first_col: first_col = next((c for c, cl in cols_lower.items() if "first" in cl), None)
+            
+            middle_col = next((c for c, cl in cols_lower.items() if "middle" in cl), None)
+            
+            last_col = next((c for c, cl in cols_lower.items() if "last" in cl and "name" in cl), None)
+            if not last_col: last_col = next((c for c, cl in cols_lower.items() if "last" in cl), None)
+            
+            # Explicit Full Name column candidates
+            full_name_col = next((c for c, cl in cols_lower.items() if "full" in cl and "name" in cl), None)
+            if not full_name_col:
+                full_name_col = next((c for c, cl in cols_lower.items() if "driver" in cl and "name" in cl and "first" not in cl and "last" not in cl), None)
+            
+            # Generic Name column (fallback)
+            generic_name_col = next((c for c, cl in cols_lower.items() if "name" in cl and "first" not in cl and "last" not in cl and "middle" not in cl and "file" not in cl), None)
+
             parts = []
-            if first_col:
-                parts.append(first_col)
-            if middle_col:
-                parts.append(middle_col)
-            if last_col:
-                parts.append(last_col)
-            built = self._build_full_name(r, parts) if parts else None
-            raw_name = r.get(name_col) if name_col else None
-            use_name = raw_name if (raw_name is not None and str(raw_name).strip() != "") else built
+            if first_col: parts.append(first_col)
+            if middle_col: parts.append(middle_col)
+            if last_col: parts.append(last_col)
+            
+            built_name = self._build_full_name(r, parts) if parts else None
+            raw_full_name = r.get(full_name_col) if full_name_col else None
+            raw_generic_name = r.get(generic_name_col) if generic_name_col else None
+            
+            # Priority: 
+            # 1. Explicit Full Name column
+            # 2. Constructed from First/Last
+            # 3. Generic "Name" column
+            use_name = None
+            if raw_full_name and str(raw_full_name).strip():
+                use_name = raw_full_name
+            elif built_name and str(built_name).strip():
+                use_name = built_name
+            elif raw_generic_name and str(raw_generic_name).strip():
+                use_name = raw_generic_name
+            
             r["_lookup_name"] = use_name
             r["_lookup_fullname_std"] = self._std_upper(use_name) if use_name else ""
+            
             dob_col = next((c for c in lookup_df.columns if any(k in str(c).lower() for k in ("dob","date of birth","birth"))), None)
             dob_val = r.get(dob_col) if dob_col else None
             try:
@@ -493,9 +574,24 @@ class Alltrans:
 
         # prepare main keys & order
         cdl_col_main = self._find_cdl_col(list(df_main_clean.columns), sample_df=df_main_clean)
-        if cdl_col_main is None:
-            raise ValueError("Could not detect CDL Number column in main MVR cleaned sheet.")
-        df_main_clean["_cdl_key"] = df_main_clean[cdl_col_main].astype(str).str.strip()
+        
+        # Assign unique keys for missing CDL to prevent grouping distinct drivers
+        def _make_key(val, idx):
+            s = str(val).strip()
+            if s == "" or s.lower() == "nan":
+                return f"_NO_CDL_{idx}"
+            return s
+
+        if cdl_col_main:
+            df_main_clean["_cdl_key"] = [
+                _make_key(x, i) 
+                for i, x in enumerate(df_main_clean[cdl_col_main])
+            ]
+        else:
+            # If no CDL column found, treat all as missing CDL
+            self.logger.warning("No CDL column found in MVR. Proceeding with Name+DOB matching.")
+            df_main_clean["_cdl_key"] = [f"_NO_CDL_{i}" for i in range(len(df_main_clean))]
+        
         order_keys = df_main_clean["_cdl_key"].dropna().astype(str).tolist()
         seen = set()
         ordered_unique_keys = []
@@ -575,134 +671,94 @@ class Alltrans:
         fallback_matches = []
         unmatched_mask_indices = []
         matched_lookup_indices = set()
+        
         for idx, rec in df_records.iterrows():
             cdl_key = str(rec.get("_cdl_key", "")).strip()
-            doh_raw = None
-            matched_by = None
-            found = None
             m_name_std = rec.get("_full_name_std")
             m_dob_iso = rec.get("_dob_iso")
-            # Attempt matching by CDL; if it fails, try cleaned CDL; otherwise fallback to Name+DOB
-            if cdl_key:
-                # direct exact match
-                if cdl_key in lookup_map:
+            
+            matched_by = None
+            found_lookup_idx = None
+            
+            # --- Strategy 1: CDL Match (Exact or Cleaned) ---
+            candidate_idxs = []
+            temp_matched_by = None
+            
+            # Only attempt CDL match if it's a real CDL key (not our dummy _NO_CDL_ key)
+            if cdl_key and not cdl_key.startswith("_NO_CDL_"):
+                # 1a. Exact Match
+                if cdl_key in lookup_key_to_indices:
                     candidate_idxs = lookup_key_to_indices.get(cdl_key, [])
-                    if candidate_idxs:
-                        best_i = None
-                        best_score = -1
-                        for i in candidate_idxs:
-                            lr = lookup_rows[i]
-                            lk_name_std = lr.get("_lookup_fullname_std")
-                            lk_dob_iso = lr.get("_lookup_dob_iso")
-                            score = 0
-                            if m_dob_iso and lk_dob_iso and m_dob_iso == lk_dob_iso:
-                                score += 5
-                            score += self._score_name_match(m_name_std, lk_name_std)
-                            if score > best_score:
-                                best_score = score
-                                best_i = i
-                        if best_i is None:
-                            best_i = candidate_idxs[0]
-                        lr = lookup_rows[best_i]
-                        doh_raw = lr.get(hire_col_lookup)
-                        matched_by = "CDL"
-                        matched_lookup_indices.add(best_i)
-                        lookup_dob = lr.get("_lookup_dob")
-                        cur_dob = rec.get("Driver Date of Birth")
-                        if (cur_dob is None or (isinstance(cur_dob, float) and pd.isna(cur_dob)) or (isinstance(cur_dob, str) and str(cur_dob).strip() == "")):
-                            if lookup_dob not in (None, ""):
-                                df_records.at[idx, "Driver Date of Birth"] = str(lookup_dob)
+                    temp_matched_by = "CDL"
                 else:
-                    # try cleaned CDL normalization when exact doesn't match
+                    # 1b. Cleaned Match
                     try:
                         cclean = self._clean_cdl_key(cdl_key)
                     except Exception:
                         cclean = ""
-                    if cclean and cclean in lookup_map_clean:
+                    if cclean and cclean in lookup_key_to_indices:
                         candidate_idxs = lookup_key_to_indices.get(cclean, [])
-                        if candidate_idxs:
-                            best_i = None
-                            best_score = -1
-                            for i in candidate_idxs:
-                                lr = lookup_rows[i]
-                                lk_name_std = lr.get("_lookup_fullname_std")
-                                lk_dob_iso = lr.get("_lookup_dob_iso")
-                                score = 0
-                                if m_dob_iso and lk_dob_iso and m_dob_iso == lk_dob_iso:
-                                    score += 5
-                                score += self._score_name_match(m_name_std, lk_name_std)
-                                if score > best_score:
-                                    best_score = score
-                                    best_i = i
-                            if best_i is None:
-                                best_i = candidate_idxs[0]
-                            lr = lookup_rows[best_i]
-                            doh_raw = lr.get(hire_col_lookup)
-                            matched_by = "CDL (cleaned)"
-                            matched_lookup_indices.add(best_i)
-                            lookup_dob = lr.get("_lookup_dob")
-                            cur_dob = rec.get("Driver Date of Birth")
-                            if (cur_dob is None or (isinstance(cur_dob, float) and pd.isna(cur_dob)) or (isinstance(cur_dob, str) and str(cur_dob).strip() == "")):
-                                if lookup_dob not in (None, ""):
-                                    df_records.at[idx, "Driver Date of Birth"] = str(lookup_dob)
-                    else:
-                        # fallback to Name+DOB flexible matching
-                        m_name = rec.get("Driver Full Name")
-                        found = None
-                        for i, lr in enumerate(lookup_rows):
-                            if i in matched_lookup_indices:
-                                continue
-                            lk_name_std = lr.get("_lookup_fullname_std")
-                            lk_dob = lr.get("_lookup_dob")
-                            try:
-                                if self._date_equal(rec.get("Driver Date of Birth"), lk_dob) and self._client_tokens_subset(m_name_std, lk_name_std):
-                                    found = (i, lr)
-                                    break
-                            except Exception as e:
-                                self.logger.debug("Error during flexible name+DOB match: %s", e, exc_info=True)
-                                continue
-                        if found:
-                            i, lr = found
-                            doh_raw = lr.get(hire_col_lookup)
-                            matched_by = "Name+DOB"
-                            fallback_matches.append({
-                                "MVR_CDL": cdl_key or None,
-                                "Driver": rec.get("Driver Full Name"),
-                                "MVR_DOB": rec.get("Driver Date of Birth"),
-                                "Matched Lookup CDL": lr.get("_cdl_key_norm"),
-                                "Matched Lookup Name": lr.get("_lookup_name"),
-                                "Matched Hire Raw": doh_raw
-                            })
-                            lookup_dob = lr.get("_lookup_dob")
-                            cur_dob = rec.get("Driver Date of Birth")
-                            if (cur_dob is None or (isinstance(cur_dob, float) and pd.isna(cur_dob)) or (isinstance(cur_dob, str) and str(cur_dob).strip() == "")):
-                                if lookup_dob not in (None, ""):
-                                    df_records.at[idx, "Driver Date of Birth"] = str(lookup_dob)
-                            matched_lookup_indices.add(i)
-                        else:
-                            matched_by = None
-                            unmatched_mask_indices.append(idx)
-            else:
-                # no CDL present; try Name+DOB fallback
-                m_name = rec.get("Driver Full Name")
-                found = None
+                        temp_matched_by = "CDL (cleaned)"
+            
+            if candidate_idxs:
+                # Resolve best match among candidates (if multiple people share CDL or collision)
+                best_i = None
+                best_score = -1
+                for i in candidate_idxs:
+                    lr = lookup_rows[i]
+                    lk_name_std = lr.get("_lookup_fullname_std")
+                    lk_dob_iso = lr.get("_lookup_dob_iso")
+                    score = 0
+                    if m_dob_iso and lk_dob_iso and m_dob_iso == lk_dob_iso:
+                        score += 5
+                    score += self._score_name_match(m_name_std, lk_name_std)
+                    if score > best_score:
+                        best_score = score
+                        best_i = i
+                
+                if best_i is not None:
+                    found_lookup_idx = best_i
+                    matched_by = temp_matched_by
+                elif candidate_idxs:
+                    found_lookup_idx = candidate_idxs[0]
+                    matched_by = temp_matched_by
+
+            # --- Strategy 2: Name + DOB Match (Fallback) ---
+            # If no CDL match found (or CDL missing), try Name + DOB
+            if found_lookup_idx is None:
                 for i, lr in enumerate(lookup_rows):
                     if i in matched_lookup_indices:
                         continue
+                    
                     lk_name_std = lr.get("_lookup_fullname_std")
                     lk_dob = lr.get("_lookup_dob")
+                    
                     try:
-                        if self._date_equal(rec.get("Driver Date of Birth"), lk_dob) and self._client_tokens_subset(m_name_std, lk_name_std):
-                            found = (i, lr)
+                        # Use the robust bidirectional name matching
+                        if self._date_equal(rec.get("Driver Date of Birth"), lk_dob) and self._is_name_match(m_name_std, lk_name_std):
+                            found_lookup_idx = i
+                            matched_by = "Name+DOB"
                             break
                     except Exception as e:
-                        self.logger.debug("Error during flexible name+DOB match: %s", e, exc_info=True)
+                        # self.logger.debug("Error during flexible name+DOB match: %s", e, exc_info=True)
                         continue
-                if found:
-                    i, lr = found
-                    doh_raw = lr.get(hire_col_lookup)
-                    matched_by = "Name+DOB"
-                    fallback_matches.append({
+
+            # --- Apply Match Data ---
+            doh_raw = None
+            if found_lookup_idx is not None:
+                matched_lookup_indices.add(found_lookup_idx)
+                lr = lookup_rows[found_lookup_idx]
+                doh_raw = lr.get(hire_col_lookup)
+                
+                # Update DOB if missing in MVR
+                lookup_dob = lr.get("_lookup_dob")
+                cur_dob = rec.get("Driver Date of Birth")
+                if (cur_dob is None or (isinstance(cur_dob, float) and pd.isna(cur_dob)) or (isinstance(cur_dob, str) and str(cur_dob).strip() == "")):
+                    if lookup_dob not in (None, ""):
+                        df_records.at[idx, "Driver Date of Birth"] = str(lookup_dob)
+                
+                if matched_by == "Name+DOB":
+                     fallback_matches.append({
                         "MVR_CDL": cdl_key or None,
                         "Driver": rec.get("Driver Full Name"),
                         "MVR_DOB": rec.get("Driver Date of Birth"),
@@ -710,15 +766,9 @@ class Alltrans:
                         "Matched Lookup Name": lr.get("_lookup_name"),
                         "Matched Hire Raw": doh_raw
                     })
-                    lookup_dob = lr.get("_lookup_dob")
-                    cur_dob = rec.get("Driver Date of Birth")
-                    if (cur_dob is None or (isinstance(cur_dob, float) and pd.isna(cur_dob)) or (isinstance(cur_dob, str) and str(cur_dob).strip() == "")):
-                        if lookup_dob not in (None, ""):
-                            df_records.at[idx, "Driver Date of Birth"] = str(lookup_dob)
-                    matched_lookup_indices.add(i)
-                else:
-                    matched_by = None
-                    unmatched_mask_indices.append(idx)
+            else:
+                unmatched_mask_indices.append(idx)
+
             df_records.at[idx, "DOH_raw"] = doh_raw
             df_records.at[idx, "DOH"] = self._format_doh_for_excel(doh_raw) if doh_raw is not None else None
             df_records.at[idx, "MatchedBy"] = matched_by
@@ -757,6 +807,16 @@ class Alltrans:
 
         # compute Age from DOB (strip apostrophe)
         df_records["Age"] = df_records["Driver Date of Birth"].apply(self._compute_age_from_str_dob)
+
+        return df_records
+
+    def generate_report(self, df_records: pd.DataFrame, main_bytes: bytes):
+        # load main workbook (openpyxl) for replication
+        main_wb = load_workbook(io.BytesIO(main_bytes), data_only=False)
+        if self.MVR_PREFERRED_NAME in main_wb.sheetnames:
+            src_mvr_ws = main_wb[self.MVR_PREFERRED_NAME]
+        else:
+            src_mvr_ws = main_wb[main_wb.sheetnames[0]]
 
         # write to template
         if not os.path.exists(self.TEMPLATE_PATH):
@@ -831,3 +891,7 @@ class Alltrans:
         out.seek(0)
 
         return out
+
+    def run(self, main_bytes: bytes, lookup_bytes: bytes, chosen_lookup_sheet: str = None, preview_rows: int = 8):
+        df_records = self.process_data(main_bytes, lookup_bytes, chosen_lookup_sheet, preview_rows)
+        return self.generate_report(df_records, main_bytes)
