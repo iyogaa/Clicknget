@@ -6,7 +6,6 @@ from mvr_gpt import mvr_gpt_app
 from processor import PDFTextSearcher
 import os
 import tempfile
-import user_metrics
 from Pdf_maker import process_pdf
 
 # Set page configuration
@@ -122,7 +121,7 @@ if not st.session_state["authenticated"]:
 
 # --- Role-based Menu Generator ---
 def get_menu_options(role):
-    base = ["MVR All Trans", "Supplement", "MVR GPT","MVR All Trans(test)","User Dashy","PDF Maker"]
+    base = ["MVR All Trans", "Supplement", "MVR GPT","MVR All Trans(test)","PDF Maker"]
     if role == "ADMIN":
         return base 
     elif role == "QA":
@@ -155,8 +154,6 @@ if menu == "MVR All Trans":
     all_trans_mvr_app()
 elif menu == "MVR GPT":
     mvr_gpt_app()
-elif menu == "User Dashy":
-    user_metrics.run_user_wise_dashboard()
 elif menu == "MVR All Trans(test)":
     from Alltran import Alltrans
     
