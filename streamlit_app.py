@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 import io
-from all_trans_mvr import all_trans_mvr_app
+
 from mvr_gpt import mvr_gpt_app
 from processor import PDFTextSearcher
 import os
@@ -79,18 +79,15 @@ body, .stMarkdown, .stText, .stDataFrame, .stMetric {
 """, unsafe_allow_html=True)
 
 # --- Authentication System ---
-credentials = {
-    "yogaraj": {"password": "afreen", "role": "ADMIN"},
-    "Maha": {"password": "Maha@129", "role": "QA"},
-    "Gokul": {"password": "reddead", "role": "QA"},
-    "user": {"password": "ssapopb", "role": "MAKER"},
-    "bharti_sawan": {"password": "sawan@agoy", "role": "QA"},
-}
+# --- Authentication System ---
+# Credentials are managed via .streamlit/secrets.toml
 
 # --- Authentication Function ---
 def authenticate(username, password):
-    if username in credentials and password == credentials[username]["password"]:
-        return credentials[username]["role"]
+    if "credentials" in st.secrets and username in st.secrets["credentials"]:
+        user_data = st.secrets["credentials"][username]
+        if password == user_data["password"]:
+            return user_data["role"]
     return None
 
 # --- Initialize Session State ---
@@ -102,7 +99,7 @@ if "authenticated" not in st.session_state:
 # --- Show Login if Not Authenticated ---
 def show_login():
     with st.sidebar:
-        st.title("🔐 Login")
+        st.title("Login")
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
         if st.button("Login"):
@@ -121,7 +118,7 @@ if not st.session_state["authenticated"]:
 
 # --- Role-based Menu Generator ---
 def get_menu_options(role):
-    base = ["MVR All Trans", "Supplement", "MVR GPT","MVR All Trans(test)","PDF Maker"]
+    base = ["MVR All Trans", "Supplement", "MVR GPT", "PDF Maker"]
     if role == "ADMIN":
         return base 
     elif role == "QA":
@@ -151,13 +148,9 @@ with st.sidebar:
 
 # --- Main Application Logic ---
 if menu == "MVR All Trans":
-    all_trans_mvr_app()
-elif menu == "MVR GPT":
-    mvr_gpt_app()
-elif menu == "MVR All Trans(test)":
     from Alltran import Alltrans
     
-    st.title("Alltrans Test")
+    st.title("Alltrans Process")
 
     #st.write("Upload MAIN (MVR) and LOOKUP files. Template.xlsx must be in the same folder.")
 
@@ -196,6 +189,8 @@ elif menu == "MVR All Trans(test)":
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e:
                 st.error(f"Error: {e}")
+elif menu == "MVR GPT":
+    mvr_gpt_app()
 elif menu == "Supplement":
     
     # Initialize session state
