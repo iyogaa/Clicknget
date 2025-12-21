@@ -1,24 +1,17 @@
 import pandas as pd
 import streamlit as st
 import io
-
-from mvr_gpt import mvr_gpt_app
-from processor import PDFTextSearcher
 import os
 import tempfile
 from Pdf_maker import process_pdf
 
-# Set page configuration
 st.set_page_config(layout="wide")
 
-# Apply custom styling
 st.markdown("""
 <style>
-/* Main page background pure black */
 .stApp {
     background-color: #000000;
 }
-/* Sidebar background medium black */
 [data-testid="stSidebar"] {
     background-color: #111111 !important;
 }
@@ -78,11 +71,6 @@ body, .stMarkdown, .stText, .stDataFrame, .stMetric {
 </style>
 """, unsafe_allow_html=True)
 
-# --- Authentication System ---
-# --- Authentication System ---
-# Credentials are managed via .streamlit/secrets.toml
-
-# --- Authentication Function ---
 def authenticate(username, password):
     if "credentials" in st.secrets and username in st.secrets["credentials"]:
         user_data = st.secrets["credentials"][username]
@@ -90,13 +78,11 @@ def authenticate(username, password):
             return user_data["role"]
     return None
 
-# --- Initialize Session State ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
     st.session_state["username"] = None
     st.session_state["role"] = None
 
-# --- Show Login if Not Authenticated ---
 def show_login():
     with st.sidebar:
         st.title("Login")
@@ -116,18 +102,16 @@ if not st.session_state["authenticated"]:
     show_login()
     st.stop()
 
-# --- Role-based Menu Generator ---
 def get_menu_options(role):
-    base = ["MVR All Trans", "Supplement", "MVR GPT", "PDF Maker"]
+    base = ["MVR All Trans", "PDF Maker", "PDF Merger"]
     if role == "ADMIN":
         return base 
     elif role == "QA":
         return base
     elif role == "MAKER":
-        return ["MVR GPT"]
+        return []
     return []
 
-# --- Sidebar Layout (Everything Inside) ---
 with st.sidebar:
     st.markdown(f"### 👋 Welcome, **{st.session_state['username']}**")
     st.markdown(f"**Role:** {st.session_state['role']}")
@@ -146,13 +130,10 @@ with st.sidebar:
         st.rerun()
     st.caption("Built with Yogaraj ")
 
-# --- Main Application Logic ---
 if menu == "MVR All Trans":
     from Alltran import Alltrans
     
     st.title("Alltrans Process")
-
-    #st.write("Upload MAIN (MVR) and LOOKUP files. Template.xlsx must be in the same folder.")
 
     main_file = st.file_uploader("Upload MVR File", type=["xlsx"])
     lookup_file = st.file_uploader("Upload Client Excel", type=["xlsx","CSV"])
@@ -164,7 +145,6 @@ if menu == "MVR All Trans":
                 lookup_bytes = lookup_file.read()
 
             
-            # If lookup workbook has multiple sheets, let user choose
                 from openpyxl import load_workbook
                 lookup_wb = load_workbook(io.BytesIO(lookup_bytes), read_only=True, data_only=True)
                 sheets = lookup_wb.sheetnames
@@ -189,96 +169,8 @@ if menu == "MVR All Trans":
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e:
                 st.error(f"Error: {e}")
-elif menu == "MVR GPT":
-    mvr_gpt_app()
-elif menu == "Supplement":
-    
-    # Initialize session state
-    if 'text_searcher' not in st.session_state:
-        st.session_state.text_searcher = PDFTextSearcher()
-        st.session_state.file_processed = False
-        st.session_state.search_ready = False
 
-    st.title("📄 PDF Text Searcher")
-    st.markdown("Upload a PDF document and ask questions about its content.")
 
-    # File upload section - in main area for better visibility
-    with st.container(border=True):
-        st.subheader("1. Upload PDF")
-        uploaded_file = st.file_uploader(
-            "Choose a PDF file", 
-            type="pdf",
-            label_visibility="visible",
-            key="pdf_uploader"
-        )
-
-        if uploaded_file and not st.session_state.file_processed:
-            with st.spinner("Processing PDF..."):
-                # Save to temp file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                    tmp.write(uploaded_file.getvalue())
-                    tmp_path = tmp.name
-                
-                # Process the PDF
-                processing_result = st.session_state.text_searcher.process_pdf(tmp_path)
-                
-                # Clean up
-                try:
-                    os.unlink(tmp_path)
-                except:
-                    pass
-
-                if st.session_state.text_searcher.processed:
-                    st.session_state.file_processed = True
-                    st.session_state.search_ready = True
-                    st.success("PDF processed successfully! You can now search the document.")
-                else:
-                    st.error("Failed to process PDF")
-
-    # Search section - only appears after successful upload
-    if st.session_state.search_ready:
-        with st.container(border=True):
-            st.subheader("2. Search Document")
-            question = st.text_input(
-                "Enter your question about the document:",
-                placeholder="e.g. What is the main conclusion?",
-                key="question_input"
-            )
-
-            if question and st.session_state.file_processed:
-                with st.spinner("Searching document..."):
-                    answer, pages, confidence, search_time, keywords = st.session_state.text_searcher.semantic_search(question)
-                    
-                    if pages:
-                        # Display results in columns
-                        col1, col2 = st.columns([1, 3])
-                        
-                        with col1:
-                            st.metric("Confidence", f"{confidence:.0%}" if confidence >= 0.1 else "Low")
-                            st.metric("Found on Page", pages[0])
-                        
-                        with col2:
-                            st.markdown("**Answer:**")
-                            st.info(answer)
-                            
-                            # Show context
-                            with st.expander("View in context"):
-                                context = st.session_state.text_searcher.get_context(pages[0], answer)
-                                st.markdown(context)
-                        
-                        # Visualize the page
-                        st.subheader("Document Preview")
-                        highlight_phrases = [answer[:100]]  # Use answer as first phrase
-                        if keywords:
-                            highlight_phrases.extend(keywords[:3])  # Add up to 3 keywords
-                        
-                        fig, error = st.session_state.text_searcher.visualize_page(pages[0], highlight_phrases)
-                        if fig:
-                            st.pyplot(fig)
-                        if error:
-                            st.warning(error)
-                    else:
-                        st.warning("No results found for your query.")
 elif menu == "PDF Maker":
     uploaded = st.file_uploader("Upload PDF", type=["pdf"])
 
@@ -304,3 +196,33 @@ elif menu == "PDF Maker":
             # cleanup
             os.remove(temp_input)
             os.remove(output_file)
+
+elif menu == "PDF Merger":
+    from pdf_merge import merge_pdfs
+    st.title("PDF Merger")
+
+    uploaded_files = st.file_uploader(
+        "Upload PDF files",
+        type=["pdf"],
+        accept_multiple_files=True
+    )
+
+    if uploaded_files and len(uploaded_files) >= 2:
+        if st.button("Merge PDFs"):
+            with st.spinner("Merging PDFs..."):
+                merged_path = merge_pdfs(uploaded_files)
+
+            with open(merged_path, "rb") as f:
+                pdf_data = f.read()
+
+            st.download_button(
+                label="⬇ Download merged PDF",
+                data=pdf_data,
+                file_name="merged.pdf",
+                mime="application/pdf"
+            )
+            
+            os.remove(merged_path)
+
+    elif uploaded_files:
+        st.warning("Please upload at least 2 PDF files")

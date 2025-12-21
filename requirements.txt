@@ -37,3 +37,7 @@ pdf2image
 img2pdf
 Pillow
 
+
+# NLP - Ultra-lightweight (no heavy models)
+# sentence-transformers (Removed)
+# torch (Removed)
