@@ -12,8 +12,11 @@ pytz
 pymupdf
 PyPDF2
 img2pdf
+<<<<<<< HEAD
 mammoth
 reportlab
+=======
+>>>>>>> 80f52e4842fbb3f199f8537a7f3f8fa75b4a90f0
 Pillow
 
 # Utilities
