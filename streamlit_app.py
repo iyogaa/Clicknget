@@ -205,7 +205,10 @@ elif menu == "PDF Play":
         "Word → PDF", 
         "Excel → PDF", 
         "Images → PDF", 
-        "HTML → PDF", 
+        "Word → PDF", 
+        "Excel → PDF", 
+        "Images → PDF", 
+        # "HTML → PDF", 
         "Merge PDFs",
         # "OCR Injection", 
         "Compress PDF"
@@ -281,24 +284,24 @@ elif menu == "PDF Play":
                         if os.path.exists(p):
                             os.remove(p)
 
-    elif tool_option == "HTML → PDF":
-        st.subheader("HTML to PDF")
-        uploaded = st.file_uploader("Upload HTML File", type=["html", "htm"])
-        # Support raw text input too? Maybe just file for now as per requirements
-        if uploaded and st.button("Convert"):
-            with st.spinner("Converting HTML to PDF..."):
-                tmp_path = save_uploaded(uploaded)
-                try:
-                    converter = HTMLToPDF()
-                    out_path = converter.convert(tmp_path)
+    # elif tool_option == "HTML → PDF":
+    #     st.subheader("HTML to PDF")
+    #     uploaded = st.file_uploader("Upload HTML File", type=["html", "htm"])
+    #     # Support raw text input too? Maybe just file for now as per requirements
+    #     if uploaded and st.button("Convert"):
+    #         with st.spinner("Converting HTML to PDF..."):
+    #             tmp_path = save_uploaded(uploaded)
+    #             try:
+    #                 converter = HTMLToPDF()
+    #                 out_path = converter.convert(tmp_path)
                     
-                    with open(out_path, "rb") as f:
-                        st.download_button("Download PDF", f, file_name=f"{uploaded.name}.pdf", mime="application/pdf")
-                    os.remove(out_path)
-                except Exception as e:
-                    st.error(f"Error: {e}")
-                finally:
-                    os.remove(tmp_path)
+    #                 with open(out_path, "rb") as f:
+    #                     st.download_button("Download PDF", f, file_name=f"{uploaded.name}.pdf", mime="application/pdf")
+    #                 os.remove(out_path)
+    #             except Exception as e:
+    #                 st.error(f"Error: {e}")
+    #             finally:
+    #                 os.remove(tmp_path)
 
     # elif tool_option == "OCR Injection":
     #     st.subheader("Make PDF Searchable (OCR)")

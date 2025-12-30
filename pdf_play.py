@@ -133,53 +133,7 @@ class ImageToPDF:
             
         return output_path
 
-class HTMLToPDF:
-    def __init__(self):
-        pass
 
-    def convert(self, input_path):
-        """Convert HTML file to PDF (Basic text extraction)."""
-        output_path = input_path.rsplit('.', 1)[0] + ".pdf"
-        
-        # Since we removed xhtml2pdf, we'll do basic text dump for now
-        # to ensure cloud compatibility. 
-        # For a real HTML parser without sys dependencies, it's complex.
-        # We will strip tags and print text.
-        
-        with open(input_path, "r", encoding="utf-8") as f:
-            html_content = f.read()
-            
-        # Very basic strip tags
-        from io import StringIO
-        from html.parser import HTMLParser
-
-        class MLStripper(HTMLParser):
-            def __init__(self):
-                super().__init__()
-                self.reset()
-                self.strict = False
-                self.convert_charrefs= True
-                self.text = StringIO()
-            def handle_data(self, d):
-                self.text.write(d)
-            def get_data(self):
-                return self.text.getvalue()
-
-        stripper = MLStripper()
-        stripper.feed(html_content)
-        text = stripper.get_data()
-        
-        doc = SimpleDocTemplate(output_path, pagesize=letter)
-        styles = getSampleStyleSheet()
-        story = []
-        
-        for line in text.split('\n'):
-            if line.strip():
-                story.append(Paragraph(line.strip(), styles["Normal"]))
-                story.append(Spacer(1, 6))
-                
-        doc.build(story)
-        return output_path
 
 
 
