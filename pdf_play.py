@@ -12,96 +12,89 @@ try:
 except ImportError:
     mammoth = None
 
-try:
-    from xhtml2pdf import pisa
-except ImportError:
-    pisa = None
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
 
 
 
 class WordToPDF:
     def __init__(self):
         if not mammoth:
-            raise ImportError("mammoth library is required for Word to PDF conversion. Please install it.")
-        if not pisa:
-            raise ImportError("xhtml2pdf library is required for Word to PDF conversion. Please install it.")
+            raise ImportError("mammoth library is required for Word conversion.")
 
     def convert(self, input_path):
-        """Convert Word docx to PDF via HTML intermediate."""
+        """Convert Word docx to PDF by extracting text."""
         output_path = input_path.rsplit('.', 1)[0] + ".pdf"
         
         with open(input_path, "rb") as docx_file:
-            result = mammoth.convert_to_html(docx_file)
-            html = result.value
+            # We extract raw text because converting HTML->PDF properly without heavy libs is hard
+            result = mammoth.extract_raw_text(docx_file)
+            text = result.value
             
-        # Add basic styling to ensure it looks decent
-        html = f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: 'Helvetica', sans-serif; padding: 20px; }}
-                table {{ border-collapse: collapse; width: 100%; }}
-                td, th {{ border: 1px solid #ddd; padding: 8px; }}
-                img {{ max-width: 100%; height: auto; }}
-            </style>
-        </head>
-        <body>
-            {html}
-        </body>
-        </html>
-        """
+        doc = SimpleDocTemplate(output_path, pagesize=letter)
+        styles = getSampleStyleSheet()
+        story = []
         
-        with open(output_path, "wb") as pdf_file:
-            pisa_status = pisa.CreatePDF(html, dest=pdf_file)
-            
-        if pisa_status.err:
-            raise Exception("PDF generation failed")
-            
+        # Split by newlines and create paragraphs
+        for line in text.split('\n'):
+            if line.strip():
+                story.append(Paragraph(line, styles["Normal"]))
+                story.append(Spacer(1, 6))
+                
+        doc.build(story)
         return output_path
 
 class ExcelToPDF:
     def __init__(self):
-        if not pisa:
-            raise ImportError("xhtml2pdf library is required for Excel to PDF conversion. Please install it.")
+        pass
 
     def convert(self, input_path):
-        """Convert Excel sheets to PDF via HTML."""
+        """Convert Excel sheets to PDF tables using ReportLab."""
         output_path = input_path.rsplit('.', 1)[0] + ".pdf"
         
         # Read all sheets
         xls = pd.ExcelFile(input_path)
-        html_parts = []
         
-        html_parts.append("""
-        <html>
-        <head>
-            <style>
-                body { font-family: 'Helvetica', sans-serif; padding: 20px; }
-                h2 { color: #333; border-bottom: 2px solid #333; }
-                table { border-collapse: collapse; width: 100%; margin-bottom: 20px; font-size: 10px; }
-                td, th { border: 1px solid #ddd; padding: 4px; text-align: left; }
-                th { background-color: #f2f2f2; }
-            </style>
-        </head>
-        <body>
-        """)
+        doc = SimpleDocTemplate(output_path, pagesize=letter)
+        elements = []
+        styles = getSampleStyleSheet()
         
         for sheet_name in xls.sheet_names:
             df = pd.read_excel(xls, sheet_name=sheet_name)
-            html_parts.append(f"<h2>Sheet: {sheet_name}</h2>")
-            html_parts.append(df.to_html(index=False, na_rep=""))
-            html_parts.append("<br><br>")
             
-        html_parts.append("</body></html>")
+            # Add Sheet Title
+            elements.append(Paragraph(f"Sheet: {sheet_name}", styles["Heading2"]))
+            elements.append(Spacer(1, 12))
+            
+            # Handle empty dataframes
+            if df.empty:
+                elements.append(Paragraph("(Empty Sheet)", styles["Normal"]))
+                elements.append(Spacer(1, 24))
+                continue
+                
+            # Convert DF to list of lists for Table
+            # Add headers
+            data = [df.columns.astype(str).tolist()] + df.astype(str).values.tolist()
+            
+            # Create Table
+            t = Table(data)
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+            
+            elements.append(t)
+            elements.append(Spacer(1, 24))
         
-        full_html = "".join(html_parts)
-        
-        # Close the Excel file handle explicitly
         xls.close()
-        
-        with open(output_path, "wb") as pdf_file:
-            pisa_status = pisa.CreatePDF(full_html, dest=pdf_file)
-            
+        doc.build(elements)
         return output_path
 
 class ImageToPDF:
@@ -142,18 +135,50 @@ class ImageToPDF:
 
 class HTMLToPDF:
     def __init__(self):
-        if not pisa:
-             raise ImportError("xhtml2pdf library is required.")
+        pass
 
     def convert(self, input_path):
+        """Convert HTML file to PDF (Basic text extraction)."""
         output_path = input_path.rsplit('.', 1)[0] + ".pdf"
+        
+        # Since we removed xhtml2pdf, we'll do basic text dump for now
+        # to ensure cloud compatibility. 
+        # For a real HTML parser without sys dependencies, it's complex.
+        # We will strip tags and print text.
         
         with open(input_path, "r", encoding="utf-8") as f:
             html_content = f.read()
             
-        with open(output_path, "wb") as pdf_file:
-            pisa.CreatePDF(html_content, dest=pdf_file)
-            
+        # Very basic strip tags
+        from io import StringIO
+        from html.parser import HTMLParser
+
+        class MLStripper(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.reset()
+                self.strict = False
+                self.convert_charrefs= True
+                self.text = StringIO()
+            def handle_data(self, d):
+                self.text.write(d)
+            def get_data(self):
+                return self.text.getvalue()
+
+        stripper = MLStripper()
+        stripper.feed(html_content)
+        text = stripper.get_data()
+        
+        doc = SimpleDocTemplate(output_path, pagesize=letter)
+        styles = getSampleStyleSheet()
+        story = []
+        
+        for line in text.split('\n'):
+            if line.strip():
+                story.append(Paragraph(line.strip(), styles["Normal"]))
+                story.append(Spacer(1, 6))
+                
+        doc.build(story)
         return output_path
 
 

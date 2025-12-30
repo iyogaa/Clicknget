@@ -12,7 +12,7 @@ pymupdf  # fitz
 PyPDF2
 img2pdf
 mammoth
-xhtml2pdf
+reportlab
 Pillow
 
 # Utilities
