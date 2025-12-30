@@ -103,7 +103,7 @@ if not st.session_state["authenticated"]:
     st.stop()
 
 def get_menu_options(role):
-    base = ["MVR All Trans", "PDF Maker", "PDF Merger"]
+    base = ["MVR All Trans", "PDF Maker", "PDF Play"]
     if role == "ADMIN":
         return base 
     elif role == "QA":
@@ -197,32 +197,257 @@ elif menu == "PDF Maker":
             os.remove(temp_input)
             os.remove(output_file)
 
-elif menu == "PDF Merger":
-    from pdf_merge import merge_pdfs
-    st.title("PDF Merger")
+elif menu == "PDF Play":
+    from pdf_play import WordToPDF, ExcelToPDF, ImageToPDF, HTMLToPDF, PDFOCR, PDFCompressor, PDFMerger
+    st.title("PDF Play Ground")
 
-    uploaded_files = st.file_uploader(
-        "Upload PDF files",
-        type=["pdf"],
-        accept_multiple_files=True
-    )
+    tool_option = st.selectbox("Select Tool", [
+        "Word → PDF", 
+        "Excel → PDF", 
+        "Images → PDF", 
+        "HTML → PDF", 
+        "Merge PDFs",
+        # "OCR Injection", 
+        "Compress PDF"
+    ])
 
-    if uploaded_files and len(uploaded_files) >= 2:
-        if st.button("Merge PDFs"):
-            with st.spinner("Merging PDFs..."):
-                merged_path = merge_pdfs(uploaded_files)
+    # Helper for saving uploaded file
+    def save_uploaded(uploaded):
+        suffix = os.path.splitext(uploaded.name)[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(uploaded.getbuffer())
+            return tmp.name
 
-            with open(merged_path, "rb") as f:
-                pdf_data = f.read()
+    if tool_option == "Word → PDF":
+        st.subheader("Word (.doc/.docx) to PDF")
+        uploaded = st.file_uploader("Upload Word Document", type=["doc", "docx"])
+        if uploaded and st.button("Convert"):
+            with st.spinner("Converting Word to PDF..."):
+                tmp_path = save_uploaded(uploaded)
+                try:
+                    converter = WordToPDF()
+                    out_path = converter.convert(tmp_path)
+                    
+                    with open(out_path, "rb") as f:
+                        st.download_button("Download PDF", f, file_name=f"{uploaded.name}.pdf", mime="application/pdf")
+                    os.remove(out_path)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+                finally:
+                    os.remove(tmp_path)
 
-            st.download_button(
-                label="⬇ Download merged PDF",
-                data=pdf_data,
-                file_name="merged.pdf",
-                mime="application/pdf"
-            )
+    elif tool_option == "Excel → PDF":
+        st.subheader("Excel (.xls/.xlsx) to PDF")
+        uploaded = st.file_uploader("Upload Excel File", type=["xls", "xlsx"])
+        if uploaded and st.button("Convert"):
+            with st.spinner("Converting Excel to PDF..."):
+                tmp_path = save_uploaded(uploaded)
+                try:
+                    converter = ExcelToPDF()
+                    out_path = converter.convert(tmp_path)
+                    
+                    with open(out_path, "rb") as f:
+                        st.download_button("Download PDF", f, file_name=f"{uploaded.name}.pdf", mime="application/pdf")
+                    os.remove(out_path)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+                finally:
+                    os.remove(tmp_path)
+
+    elif tool_option == "Images → PDF":
+        st.subheader("Images to PDF")
+        uploaded_files = st.file_uploader("Upload Images", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+        if uploaded_files and st.button("Convert"):
+            with st.spinner("Converting Images to PDF..."):
+                img_paths = []
+                # Save all images
+                for up in uploaded_files:
+                    img_paths.append(save_uploaded(up))
+                
+                try:
+                    converter = ImageToPDF()
+                    out_path = converter.convert(img_paths)
+                    
+                    with open(out_path, "rb") as f:
+                        st.download_button("Download PDF", f, file_name="images.pdf", mime="application/pdf")
+                    # Cleanup output
+                    if os.path.exists(out_path):
+                        os.remove(out_path)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+                finally:
+                    # Cleanup inputs
+                    for p in img_paths:
+                        if os.path.exists(p):
+                            os.remove(p)
+
+    elif tool_option == "HTML → PDF":
+        st.subheader("HTML to PDF")
+        uploaded = st.file_uploader("Upload HTML File", type=["html", "htm"])
+        # Support raw text input too? Maybe just file for now as per requirements
+        if uploaded and st.button("Convert"):
+            with st.spinner("Converting HTML to PDF..."):
+                tmp_path = save_uploaded(uploaded)
+                try:
+                    converter = HTMLToPDF()
+                    out_path = converter.convert(tmp_path)
+                    
+                    with open(out_path, "rb") as f:
+                        st.download_button("Download PDF", f, file_name=f"{uploaded.name}.pdf", mime="application/pdf")
+                    os.remove(out_path)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+                finally:
+                    os.remove(tmp_path)
+
+    # elif tool_option == "OCR Injection":
+    #     st.subheader("Make PDF Searchable (OCR)")
+    #     uploaded = st.file_uploader("Upload Scanned PDF", type=["pdf"])
+    #     if uploaded and st.button("Run OCR"):
+    #         with st.spinner("Running OCR... This may take a while."):
+    #             tmp_path = save_uploaded(uploaded)
+    #             try:
+    #                 processor = PDFOCR()
+    #                 out_path = processor.process(tmp_path)
+                    
+    #                 with open(out_path, "rb") as f:
+    #                     st.download_button("Download Searchable PDF", f, file_name=f"{uploaded.name}_ocr.pdf", mime="application/pdf")
+    #                 os.remove(out_path)
+    #             except Exception as e:
+    #                 st.error(f"Error: {e}")
+    #             finally:
+    #                 os.remove(tmp_path)
+
+    elif tool_option == "Compress PDF":
+        st.subheader("Compress PDF File Size")
+        uploaded = st.file_uploader("Upload PDF", type=["pdf"])
+        level = st.select_slider("Compression Level", options=["Low", "Medium", "High"], value="Medium")
+        
+        if uploaded and st.button("Compress"):
+            with st.spinner("Compressing PDF..."):
+                tmp_path = save_uploaded(uploaded)
+                try:
+                    compressor = PDFCompressor()
+                    out_path = compressor.compress(tmp_path, level.lower())
+                    
+                    # Show stats
+                    original_size = os.path.getsize(tmp_path)
+                    new_size = os.path.getsize(out_path)
+                    reduction = (1 - new_size/original_size) * 100
+                    st.success(f"Reduced by {reduction:.1f}% ({original_size/(1024*1024):.2f}MB → {new_size/(1024*1024):.2f}MB)")
+                    
+                    with open(out_path, "rb") as f:
+                        st.download_button("Download Compressed PDF", f, file_name=f"compressed_{uploaded.name}", mime="application/pdf")
+                    os.remove(out_path)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+                finally:
+                    os.remove(tmp_path)
+
+    elif tool_option == "Merge PDFs":
+        st.subheader("Merge Multiple PDFs")
+        uploaded_files = st.file_uploader("Upload PDF files", type=["pdf"], accept_multiple_files=True)
+        
+        # --- State Management for Order ---
+        if "merge_order" not in st.session_state:
+            st.session_state.merge_order = []
             
-            os.remove(merged_path)
+        # Helper to identify files uniquely
+        def get_file_id(file):
+            return f"{file.name}_{file.size}"
 
-    elif uploaded_files:
-        st.warning("Please upload at least 2 PDF files")
+        # Reconcile uploaded files with session order
+        if uploaded_files:
+            current_files_map = {get_file_id(f): f for f in uploaded_files}
+            current_ids = set(current_files_map.keys())
+            
+            # 1. Remove files that were un-uploaded
+            st.session_state.merge_order = [fid for fid in st.session_state.merge_order if fid in current_ids]
+            
+            # 2. Add new files to the end
+            for fid in current_files_map:
+                if fid not in st.session_state.merge_order:
+                    st.session_state.merge_order.append(fid)
+                    
+            # --- Reordering UI ---
+            st.write("### 🔢 Organize Files")
+            st.caption("Reorder files using Up/Down buttons. The final PDF will follow this order.")
+            
+            # We need callbacks for buttons
+            def move_up(idx):
+                if idx > 0:
+                    st.session_state.merge_order[idx], st.session_state.merge_order[idx-1] = \
+                    st.session_state.merge_order[idx-1], st.session_state.merge_order[idx]
+            
+            def move_down(idx):
+                if idx < len(st.session_state.merge_order) - 1:
+                    st.session_state.merge_order[idx], st.session_state.merge_order[idx+1] = \
+                    st.session_state.merge_order[idx+1], st.session_state.merge_order[idx]
+
+            # Display list with buttons
+            for i, fid in enumerate(st.session_state.merge_order):
+                f_obj = current_files_map[fid]
+                c1, c2, c3 = st.columns([6, 1, 1])
+                with c1:
+                    st.text(f"{i+1}. {f_obj.name}")
+                with c2:
+                    st.button("⬆", key=f"up_{fid}", on_click=move_up, args=(i,), disabled=(i==0))
+                with c3:
+                    st.button("⬇", key=f"down_{fid}", on_click=move_down, args=(i,), disabled=(i==len(st.session_state.merge_order)-1))
+
+            # --- Merge Logic ---
+            if len(st.session_state.merge_order) >= 2:
+                st.markdown("---")
+                
+                # Output Filename Logic
+                default_name = current_files_map[st.session_state.merge_order[0]].name.rsplit('.', 1)[0] + "_merged"
+                output_name_input = st.text_input("Output Filename (without .pdf)", value=default_name)
+                final_output_name = f"{output_name_input}.pdf" if not output_name_input.lower().endswith('.pdf') else output_name_input
+
+                if st.button("Merge PDFs Now"):
+                    with st.spinner("Merging PDFs in specific order..."):
+                        pdf_paths = []
+                        temp_path_map = {} # Keep track to delete later
+                        
+                        try:
+                            # Save files IN ORDER
+                            for fid in st.session_state.merge_order:
+                                f_obj = current_files_map[fid]
+                                path = save_uploaded(f_obj)
+                                pdf_paths.append(path)
+                                temp_path_map[path] = True
+                            
+                            merger = PDFMerger()
+                            # Pass strict ordered list
+                            out_path = merger.merge(pdf_paths)
+                            
+                            with open(out_path, "rb") as f:
+                                st.download_button(
+                                    label=f"⬇ Download {final_output_name}", 
+                                    data=f, 
+                                    file_name=final_output_name, 
+                                    mime="application/pdf"
+                                )
+                            
+                            # Cleanup output
+                            if os.path.exists(out_path):
+                                os.remove(out_path)
+                                
+                        except Exception as e:
+                            st.error(f"Merge Error: {e}")
+                            
+                        finally:
+                            # Cleanup inputs
+                            for p in pdf_paths:
+                                if os.path.exists(p):
+                                    try:
+                                        os.remove(p)
+                                    except:
+                                        pass
+            else:
+                 st.info("Upload at least 2 files to enable merging.")
+        
+        else:
+            # Clear state if no files uploaded
+            st.session_state.merge_order = []
+            st.warning("Please upload at least 2 PDF files")

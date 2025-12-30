@@ -41,3 +41,7 @@ Pillow
 # NLP - Ultra-lightweight (no heavy models)
 # sentence-transformers (Removed)
 # torch (Removed)
+
+# PDF Play Dependencies
+mammoth
+xhtml2pdf
