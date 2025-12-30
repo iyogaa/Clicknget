@@ -8,7 +8,8 @@ python-dateutil
 pytz
 
 # PDF Processing
-pymupdf  # fitz
+# Use binary wheels where possible to avoid build issues
+pymupdf
 PyPDF2
 img2pdf
 mammoth
