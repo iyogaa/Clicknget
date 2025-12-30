@@ -17,15 +17,7 @@ try:
 except ImportError:
     pisa = None
 
-try:
-    import pytesseract
-except ImportError:
-    pytesseract = None
 
-try:
-    from pdf2image import convert_from_path
-except ImportError:
-    convert_from_path = None
 
 class WordToPDF:
     def __init__(self):
@@ -164,39 +156,7 @@ class HTMLToPDF:
             
         return output_path
 
-class PDFOCR:
-    def __init__(self):
-        if not pytesseract:
-            raise ImportError("pytesseract is required for OCR.")
-        if not convert_from_path:
-             raise ImportError("pdf2image is required for OCR.")
 
-    def process(self, input_path):
-        """Inject valid OCR into a PDF by converting pages to images and re-OCRing."""
-        output_path = input_path.rsplit('.', 1)[0] + "_ocr.pdf"
-        
-        # This is a potentially heavy operation.
-        # We will convert PDF to images, then use pytesseract to get PDF page from image, then merge.
-        
-        # Convert PDF to images
-        # Poppler is needed for pdf2image. If not on system, this fails.
-        # Assuming poppler is present or we fallback.
-        try:
-            images = convert_from_path(input_path)
-        except Exception as e:
-            raise Exception(f"Failed to convert PDF to images: {e}. Is Poppler installed?")
-
-        ocr_pdf = fitz.open()
-        
-        for img in images:
-            # Get PDF data from pytesseract
-            pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf')
-            # Open as fitz doc
-            img_doc = fitz.open("pdf", pdf_bytes)
-            ocr_pdf.insert_pdf(img_doc)
-        
-        ocr_pdf.save(output_path)
-        return output_path
 
 class PDFCompressor:
     def __init__(self):

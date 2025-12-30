@@ -198,7 +198,7 @@ elif menu == "PDF Maker":
             os.remove(output_file)
 
 elif menu == "PDF Play":
-    from pdf_play import WordToPDF, ExcelToPDF, ImageToPDF, HTMLToPDF, PDFOCR, PDFCompressor, PDFMerger
+    from pdf_play import WordToPDF, ExcelToPDF, ImageToPDF, HTMLToPDF, PDFCompressor, PDFMerger
     st.title("PDF Play Ground")
 
     tool_option = st.selectbox("Select Tool", [
