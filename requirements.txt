@@ -12,7 +12,6 @@ pymupdf
 PyPDF2
 pdf2image
 img2pdf
-xhtml2pdf
 Pillow
 
 # Utilities
