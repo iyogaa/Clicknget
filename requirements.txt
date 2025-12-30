@@ -12,9 +12,7 @@ pymupdf
 PyPDF2
 pdf2image
 img2pdf
-mammoth
 xhtml2pdf
-pytesseract
 Pillow
 
 # Utilities
