@@ -198,7 +198,7 @@ elif menu == "PDF Maker":
             os.remove(output_file)
 
 elif menu == "PDF Play":
-    from pdf_play import WordToPDF, ExcelToPDF, ImageToPDF, PDFCompressor, PDFMerger
+    from pdf_play import WordToPDF, ExcelToPDF, ImageToPDF, PDFCompressor, PDFMerger, PDFSplitter
     st.title("PDF Play Ground")
 
     tool_option = st.selectbox("Select Tool", [
@@ -206,6 +206,7 @@ elif menu == "PDF Play":
         "Excel → PDF", 
         "Images → PDF", 
         "Merge PDFs",
+        "Split PDF",
         "Compress PDF"
     ])
 
@@ -425,3 +426,61 @@ elif menu == "PDF Play":
             # Clear state if no files uploaded
             st.session_state.merge_order = []
             st.warning("Please upload at least 2 PDF files")
+
+    elif tool_option == "Split PDF":
+        st.subheader("Split PDF / Extract Pages")
+        uploaded = st.file_uploader("Upload PDF to Split", type=["pdf"])
+        
+        if uploaded:
+            # Show basic info
+            try:
+                import fitz
+                with fitz.open(stream=uploaded.read(), filetype="pdf") as doc:
+                    num_pages = len(doc)
+                uploaded.seek(0) # Reset pointer
+                st.info(f"Total Pages: {num_pages}")
+                
+                page_range_str = st.text_input("Enter Page Numbers to Extract (e.g., 1, 3-5, 8)", help="Comma-separated numbers or ranges. Example: 1, 3-5 extracts pages 1, 3, 4, 5.")
+                
+                if st.button("Extract Pages"):
+                    if not page_range_str.strip():
+                        st.error("Please enter a page range.")
+                    else:
+                        with st.spinner("Extracting pages..."):
+                            tmp_path = save_uploaded(uploaded)
+                            try:
+                                # Parse Range String to List of Integers (0-based)
+                                selected_pages = []
+                                parts = page_range_str.split(',')
+                                for part in parts:
+                                    part = part.strip()
+                                    if '-' in part:
+                                        start, end = part.split('-')
+                                        start, end = int(start), int(end)
+                                        # Handle Py vs Human indexing (Human 1-based -> Py 0-based)
+                                        # inclusive range
+                                        selected_pages.extend(range(start-1, end))
+                                    else:
+                                        selected_pages.append(int(part)-1)
+                                
+                                # Remove duplicates and sort
+                                selected_pages = sorted(list(set(selected_pages)))
+                                
+                                splitter = PDFSplitter()
+                                out_path = splitter.extract_pages(tmp_path, selected_pages)
+                                
+                                output_name = f"{os.path.splitext(uploaded.name)[0]}_extracted.pdf"
+                                with open(out_path, "rb") as f:
+                                    st.download_button("Download Extracted PDF", f, file_name=output_name, mime="application/pdf")
+                                    
+                                os.remove(out_path)
+                                
+                            except ValueError as ve:
+                                st.error(f"Invalid input: {ve}")
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+                            finally:
+                                if os.path.exists(tmp_path):
+                                    os.remove(tmp_path)
+            except Exception as e:
+                st.error(f"Error reading file info: {e}")

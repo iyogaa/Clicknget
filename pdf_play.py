@@ -189,3 +189,28 @@ class PDFMerger:
         merged.close()
         
         return output_path
+
+class PDFSplitter:
+    def __init__(self):
+        pass
+
+    def extract_pages(self, input_path, page_numbers):
+        """
+        Extract specific pages to a new PDF.
+        page_numbers: list of 0-based page integers
+        """
+        doc = fitz.open(input_path)
+        output_path = input_path.rsplit('.', 1)[0] + "_extracted.pdf"
+        
+        # Validation
+        max_page = len(doc) - 1
+        valid_pages = [p for p in page_numbers if 0 <= p <= max_page]
+        
+        if not valid_pages:
+            raise ValueError("No valid pages selected.")
+            
+        doc.select(valid_pages)
+        doc.save(output_path)
+        doc.close()
+        
+        return output_path

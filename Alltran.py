@@ -265,7 +265,7 @@ class Alltrans:
         return False
 
     def _find_cdl_col(self, cols, sample_df=None):
-        candidates = ["CDL Number", "CDLNumber", "CDL No", "CDL", "CDL_Number", "License Number", "License Num", "License No", "Driver License Number", "Driver License", "License", "Drivers License Number", "DL Number", "DL No"]
+        candidates = ["CDL Number", "CDLNumber", "CDL No", "CDL", "CDL_Number", "License Number", "License Num", "License No", "Driver License Number", "Driver License", "License", "Drivers License Number", "DL Number", "DL No","License #"]
         for c in candidates:
             for col in cols:
                 if col.strip().lower() == c.strip().lower():
