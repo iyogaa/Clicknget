@@ -335,6 +335,46 @@ class Alltrans:
         x = re.sub(r"\s+", " ", x).strip()
         return x
 
+    def _is_valid_dob(self, val):
+        """
+        Validate if a DOB value is a valid, parseable date.
+        Returns True only if the value can be successfully parsed as a date.
+        Returns False for corrupted, malformed, or non-date values.
+        """
+        if val is None:
+            return False
+        try:
+            # Handle string values
+            v = val
+            if isinstance(v, str):
+                # Strip leading apostrophe if present
+                if v.startswith("'"):
+                    v = v[1:]
+                # Strip whitespace
+                v = v.strip()
+                # Check for empty string
+                if v == "":
+                    return False
+                # Check for obvious non-date patterns (e.g., "XX XX X003")
+                # If it contains only X's, spaces, and maybe some digits but not a valid date format
+                if re.match(r'^[X\s]+\d*$', v, re.IGNORECASE):
+                    return False
+            
+            # Try to parse as datetime
+            ts = pd.to_datetime(v, errors="coerce")
+            if pd.isna(ts):
+                # Try with dayfirst=True as fallback
+                ts = pd.to_datetime(v, errors="coerce", dayfirst=True)
+            
+            # If still NaT (Not a Time), it's invalid
+            if pd.isna(ts):
+                return False
+            
+            # Successfully parsed
+            return True
+        except Exception:
+            return False
+
     def _dob_iso(self, val):
         if val is None:
             return None
@@ -750,12 +790,27 @@ class Alltrans:
                 lr = lookup_rows[found_lookup_idx]
                 doh_raw = lr.get(hire_col_lookup)
                 
-                # Update DOB if missing in MVR
+                # Update DOB if missing OR invalid in MVR
                 lookup_dob = lr.get("_lookup_dob")
                 cur_dob = rec.get("Driver Date of Birth")
-                if (cur_dob is None or (isinstance(cur_dob, float) and pd.isna(cur_dob)) or (isinstance(cur_dob, str) and str(cur_dob).strip() == "")):
-                    if lookup_dob not in (None, ""):
-                        df_records.at[idx, "Driver Date of Birth"] = str(lookup_dob)
+                
+                # Check if current DOB is missing
+                is_missing = (cur_dob is None or 
+                             (isinstance(cur_dob, float) and pd.isna(cur_dob)) or 
+                             (isinstance(cur_dob, str) and str(cur_dob).strip() == ""))
+                
+                # Check if current DOB is invalid/corrupted (NEW VALIDATION)
+                is_invalid = False
+                if not is_missing:
+                    try:
+                        is_invalid = not self._is_valid_dob(cur_dob)
+                    except Exception:
+                        is_invalid = True
+                
+                # Populate from lookup if missing OR invalid
+                if (is_missing or is_invalid) and lookup_dob not in (None, ""):
+                    df_records.at[idx, "Driver Date of Birth"] = str(lookup_dob)
+
                 
                 if matched_by == "Name+DOB":
                      fallback_matches.append({
