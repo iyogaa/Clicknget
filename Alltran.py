@@ -841,14 +841,14 @@ class Alltrans:
             append_rec["Driver Date of Birth"] = f"{dob_val}" if dob_val not in (None, "") else None
             append_rec["CDL Number"] = lr.get("_cdl_key_norm")
             append_rec["CDL Type"] = None
-            append_rec["Lic State"] = None
+            append_rec["Lic State"] = lr.get("State")
             append_rec["Passenger Endt"] = None
             append_rec["School Bus Endt"] = None
             append_rec["LIC Status"] = None
             append_rec["Notes"] = "Missing MVR"
-            append_rec["# Accidents"] = 0
-            append_rec["# Minor Violations"] = 0
-            append_rec["# MAJOR Violations"] = 0
+            append_rec["# Accidents"] = None
+            append_rec["# Minor Violations"] = None
+            append_rec["# MAJOR Violations"] = None
             append_rec["YES"] = None
             append_rec["NO"] = None
             doh_raw = lr.get(hire_col_lookup)
@@ -919,9 +919,9 @@ class Alltrans:
                     existing_notes = rec.get("Notes") or ""
                     if rec.get("MatchedBy") == "LookupOnly":
                         if existing_notes:
-                            val = f"{existing_notes} Missing MVR"
+                            val = f"{existing_notes}"
                         else:
-                            val = "Missing MVR"
+                            val = ""
                     else:
                         val = existing_notes if existing_notes else None
                 elif h in ("doh","date of hire","hire date"):
