@@ -106,7 +106,7 @@ def get_menu_options(role):
     base = ["MVR All Trans", "PDF Maker", "PDF Play"]
     if role == "ADMIN":
         return base 
-    elif role == "QA":
+    elif role == "QA" or role == "TL":
         return base
     elif role == "MAKER":
         return []
@@ -135,8 +135,8 @@ if menu == "MVR All Trans":
     
     st.title("Alltrans Process")
 
-    main_file = st.file_uploader("Upload MVR File", type=["xlsx"])
-    lookup_file = st.file_uploader("Upload Client Excel", type=["xlsx","CSV"])
+    main_file = st.file_uploader("Upload MVR File", type=["xlsx", "xls", "csv"])
+    lookup_file = st.file_uploader("Upload Client Excel", type=["xlsx", "xls", "csv"])
 
     if main_file and lookup_file:
         if st.button("Process"):
@@ -146,14 +146,20 @@ if menu == "MVR All Trans":
 
             
                 from openpyxl import load_workbook
-                lookup_wb = load_workbook(io.BytesIO(lookup_bytes), read_only=True, data_only=True)
-                sheets = lookup_wb.sheetnames
                 chosen_sheet = None
-                if len(sheets) > 1:
-                    chosen_sheet = st.selectbox("Lookup workbook has multiple sheets. Choose one:", options=sheets)
-                else:
-                    chosen_sheet = sheets[0]
-                    st.write(f"From Client Excel: {chosen_sheet}")
+                try:
+                    # Try to see if it has sheets (Excel)
+                    lookup_wb = load_workbook(io.BytesIO(lookup_bytes), read_only=True)
+                    sheets = lookup_wb.sheetnames
+                    if len(sheets) > 1:
+                        chosen_sheet = st.selectbox("Lookup workbook has multiple sheets. Choose one:", options=sheets)
+                    else:
+                        chosen_sheet = sheets[0]
+                        st.write(f"Sheet detected: {chosen_sheet}")
+                except Exception:
+                    # Likely a CSV or not a standard Excel file
+                    st.write("File format: CSV/Plain Text (No sheets)")
+                    chosen_sheet = None
 
                 gen = Alltrans(template_path="Template.xlsx",
                             alltrans_sheet="All Trans",

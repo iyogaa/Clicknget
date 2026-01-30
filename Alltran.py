@@ -108,7 +108,7 @@ class Alltrans:
         return dst_ws
 
     def _format_doh_for_excel(self, val):
-        if val is None or (isinstance(val, float) and pd.isna(val)):
+        if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() == "":
             return None
         try:
             ts = pd.to_datetime(val, errors="coerce")
@@ -119,6 +119,29 @@ class Alltrans:
         except Exception:
             s = str(val).strip()
             return f"'{s}" if s != "" else None
+
+    def _robust_read_df(self, file_bytes: bytes, sheet_name=None, header=None, nrows=None):
+        """Try to read data from bytes as Excel first, then fall back to CSV."""
+        try:
+            # Try reading as Excel
+            # If sheet_name is None, pd.read_excel reads the first sheet
+            return pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, dtype=str, header=header, nrows=nrows)
+        except Exception:
+            try:
+                # Try reading as CSV with different encodings/delimiters
+                # We ignore sheet_name for CSV
+                for encoding in ['utf-8', 'latin1', 'cp1252']:
+                    for sep in [',', ';', '\t']:
+                        try:
+                            df = pd.read_csv(io.BytesIO(file_bytes), sep=sep, encoding=encoding, dtype=str, header=header, nrows=nrows)
+                            if not df.empty and len(df.columns) > 1:
+                                return df
+                        except Exception:
+                            continue
+                # Final attempt: very basic read
+                return pd.read_csv(io.BytesIO(file_bytes), dtype=str, header=header, nrows=nrows)
+            except Exception as e:
+                raise ValueError(f"Failed to load file: {str(e)}")
 
 
     def _normalize_tokens(self, name):
@@ -284,22 +307,31 @@ class Alltrans:
         return None
 
     def _find_hire_col(self, cols):
-        candidates = ["Hire Date", "HireDate", "DOH", "Date of Hire", "Hire_Date", "Driver Hire Date", "Driver Hire date", "Hire date", "Date Hired", "Employment Date", "Start Date", "Hire Date", "Date of Join", "Joining Date", "Join Date"]
+        candidates = ["Hire Date", "HireDate", "DOH", "Date of Hire", "Hire_Date", "Driver Hire Date", "Driver Hire date", "Hire date", "Date Hired", "Employment Date", "Start Date", "Date of Join", "Joining Date", "Join Date"]
         for c in candidates:
             for col in cols:
                 if col.strip().lower() == c.strip().lower():
                     return col
         for col in cols:
-            if "hire" in col.strip().lower() or "doh" in col.strip().lower() or "date" in col.strip().lower():
+            l = col.strip().lower()
+            if ("hire" in l or "doh" in l) and "date" in l:
                 return col
-        # last resort: pick any column that has date-like content
         for col in cols:
-            try:
-                sample = pd.Series([c for c in cols if not pd.isna(c)]).head(1)
-                # just return first col as fallback if it exists
+            l = col.strip().lower()
+            if l == "doh" or "hire date" in l:
                 return col
-            except Exception:
-                continue
+        return None
+
+    def _find_state_col(self, cols):
+        candidates = ["License State", "Lic State", "State", "LicenseState", "ST", "Driver State", "Issuing State"]
+        for c in candidates:
+            for col in cols:
+                if col.strip().lower() == c.strip().lower():
+                    return col
+        for col in cols:
+            l = col.strip().lower()
+            if "state" in l or l == "st":
+                return col
         return None
 
     def _compute_age_from_str_dob(self, s):
@@ -451,19 +483,25 @@ class Alltrans:
 
     # ---------------- Core Logic ----------------
     def process_data(self, main_bytes: bytes, lookup_bytes: bytes, chosen_lookup_sheet: str = None, preview_rows: int = 8):
-        # load main workbook (openpyxl) for replication
-        main_wb = load_workbook(io.BytesIO(main_bytes), data_only=False)
-        if self.MVR_PREFERRED_NAME in main_wb.sheetnames:
-            src_mvr_ws = main_wb[self.MVR_PREFERRED_NAME]
-            mvr_sheet_name_used = self.MVR_PREFERRED_NAME
-        else:
-            src_mvr_ws = main_wb[main_wb.sheetnames[0]]
-            mvr_sheet_name_used = main_wb.sheetnames[0]
+        # load main workbook for replication (Excel only)
+        main_wb = None
+        mvr_sheet_name_used = None
+        try:
+            main_wb = load_workbook(io.BytesIO(main_bytes), data_only=False)
+            if self.MVR_PREFERRED_NAME in main_wb.sheetnames:
+                mvr_sheet_name_used = self.MVR_PREFERRED_NAME
+            else:
+                mvr_sheet_name_used = main_wb.sheetnames[0]
+        except Exception:
+            # Not an Excel file or load fails, proceed with raw read
+            pass
 
         # read raw main MVR to apply skip rules
-        df_raw = pd.read_excel(io.BytesIO(main_bytes), sheet_name=mvr_sheet_name_used, dtype=str, header=None)
+        df_raw = self._robust_read_df(main_bytes, sheet_name=mvr_sheet_name_used, header=None)
+        
         if len(df_raw) < 2:
             raise ValueError("Main MVR sheet too small to process.")
+        
         # auto-detect header row in the first few rows
         def _score_mvr_header(row):
             text_vals = [str(x).strip().lower() for x in row.fillna("").astype(str).tolist()]
@@ -489,15 +527,21 @@ class Alltrans:
         df_main_clean.columns = [str(c).strip() for c in df_main_clean.columns]
 
         # lookup workbook and sheet selection
-        lookup_wb = load_workbook(io.BytesIO(lookup_bytes), read_only=True, data_only=True)
-        lookup_sheets = lookup_wb.sheetnames
-        if chosen_lookup_sheet and chosen_lookup_sheet in lookup_sheets:
-            chosen_sheet = chosen_lookup_sheet
-        else:
-            chosen_sheet = lookup_sheets[0]
+        lookup_sheet_name_to_read = None
+        try:
+            lookup_wb_temp = load_workbook(io.BytesIO(lookup_bytes), read_only=True)
+            lookup_sheets = lookup_wb_temp.sheetnames
+            if chosen_lookup_sheet and chosen_lookup_sheet in lookup_sheets:
+                lookup_sheet_name_to_read = chosen_lookup_sheet
+            else:
+                lookup_sheet_name_to_read = lookup_sheets[0]
+        except Exception:
+            # Fallback for CSV
+            pass
 
-        # preview and auto-detect header row
-        df_lookup_preview = pd.read_excel(io.BytesIO(lookup_bytes), sheet_name=chosen_sheet, dtype=str, header=None, nrows=preview_rows)
+        # preview and auto-detect header row for lookup
+        df_lookup_preview = self._robust_read_df(lookup_bytes, sheet_name=lookup_sheet_name_to_read, header=None, nrows=preview_rows)
+        
         def score_row_as_header(row):
             text_vals = [str(x).strip().lower() for x in row.fillna("").astype(str).tolist()]
             score = 0
@@ -507,18 +551,22 @@ class Alltrans:
                     if ex in t:
                         score += 1
             return score
+            
         header_scores = [score_row_as_header(df_lookup_preview.iloc[i]) for i in range(len(df_lookup_preview))]
         best_idx = int(pd.Series(header_scores).idxmax())
         best_score = header_scores[best_idx]
         auto_header_row = best_idx if best_score >= 2 else 0
-        lookup_df = pd.read_excel(io.BytesIO(lookup_bytes), sheet_name=chosen_sheet, dtype=str, header=auto_header_row)
+        
+        lookup_df = self._robust_read_df(lookup_bytes, sheet_name=lookup_sheet_name_to_read, header=auto_header_row)
         lookup_df.columns = [str(c).strip() for c in lookup_df.columns]
 
         lookup_cols = list(lookup_df.columns)
         cdl_col_lookup = self._find_cdl_col(lookup_cols, sample_df=lookup_df)
         hire_col_lookup = self._find_hire_col(lookup_cols)
+        state_col_lookup = self._find_state_col(lookup_cols)
+        
         if hire_col_lookup is None:
-            raise ValueError("Could not detect Hire Date column in lookup automatically.")
+            self.logger.warning("Could not detect Hire Date column in lookup automatically.")
         
         if cdl_col_lookup is None:
             self.logger.warning("Could not detect CDL column in lookup. CDL matching will be skipped.")
@@ -699,9 +747,17 @@ class Alltrans:
             rec["Notes"] = " ; ".join([n for n in notes if n and n.lower() != "nan"]) if notes else None
             cat_series = group[viol_cat_col].astype(str) if (viol_cat_col and viol_cat_col in group) else pd.Series([""] * len(group))
             desc_series = group[viol_desc_col].astype(str) if (viol_desc_col and viol_desc_col in group) else pd.Series([""] * len(group))
-            rec["# Accidents"] = int(cat_series.str.contains("accident", case=False, na=False).sum()) if not cat_series.empty else int(desc_series.str.contains("accident", case=False, na=False).sum())
-            rec["# Minor Violations"] = int(cat_series.str.contains("minor", case=False, na=False).sum()) if not cat_series.empty else int(desc_series.str.contains("minor", case=False, na=False).sum())
-            rec["# MAJOR Violations"] = int(cat_series.str.contains("|".join(["major","dui","dwi","felony","suspension"]), case=False, na=False).sum()) if not cat_series.empty else int(desc_series.str.contains("|".join(["major","dui","dwi","felony","suspension"]), case=False, na=False).sum())
+            # Accidents
+            acc_count = int(cat_series.str.contains("accident", case=False, na=False).sum()) if not cat_series.empty else int(desc_series.str.contains("accident", case=False, na=False).sum())
+            rec["# Accidents"] = acc_count if acc_count > 0 else None
+
+            # Minor Violations
+            min_count = int(cat_series.str.contains("minor", case=False, na=False).sum()) if not cat_series.empty else int(desc_series.str.contains("minor", case=False, na=False).sum())
+            rec["# Minor Violations"] = min_count if min_count > 0 else None
+
+            # Major Violations
+            maj_count = int(cat_series.str.contains("|".join(["major","dui","dwi","felony","suspension"]), case=False, na=False).sum()) if not cat_series.empty else int(desc_series.str.contains("|".join(["major","dui","dwi","felony","suspension"]), case=False, na=False).sum())
+            rec["# MAJOR Violations"] = maj_count if maj_count > 0 else None
             rec["YES"] = "X" if str(rec.get("LIC Status","")).strip().upper() == "VALID" else None
             rec["NO"] = None
             records.append(rec)
@@ -841,7 +897,7 @@ class Alltrans:
             append_rec["Driver Date of Birth"] = f"{dob_val}" if dob_val not in (None, "") else None
             append_rec["CDL Number"] = lr.get("_cdl_key_norm")
             append_rec["CDL Type"] = None
-            append_rec["Lic State"] = lr.get("State")
+            append_rec["Lic State"] = lr.get(state_col_lookup) if state_col_lookup else None
             append_rec["Passenger Endt"] = None
             append_rec["School Bus Endt"] = None
             append_rec["LIC Status"] = None
@@ -851,9 +907,9 @@ class Alltrans:
             append_rec["# MAJOR Violations"] = None
             append_rec["YES"] = None
             append_rec["NO"] = None
-            doh_raw = lr.get(hire_col_lookup)
+            doh_raw = lr.get(hire_col_lookup) if hire_col_lookup else None
             append_rec["DOH_raw"] = doh_raw
-            append_rec["DOH"] = self._format_doh_for_excel(doh_raw) if doh_raw is not None else None
+            append_rec["DOH"] = self._format_doh_for_excel(doh_raw) if doh_raw not in (None, "") else None
             append_rec["MatchedBy"] = "LookupOnly"
             appended_lookup_rows.append(append_rec)
         if appended_lookup_rows:
@@ -867,11 +923,17 @@ class Alltrans:
 
     def generate_report(self, df_records: pd.DataFrame, main_bytes: bytes):
         # load main workbook (openpyxl) for replication
-        main_wb = load_workbook(io.BytesIO(main_bytes), data_only=False)
-        if self.MVR_PREFERRED_NAME in main_wb.sheetnames:
-            src_mvr_ws = main_wb[self.MVR_PREFERRED_NAME]
-        else:
-            src_mvr_ws = main_wb[main_wb.sheetnames[0]]
+        main_wb = None
+        try:
+            main_wb = load_workbook(io.BytesIO(main_bytes), data_only=False)
+        except Exception:
+            pass
+
+        if main_wb:
+            if self.MVR_PREFERRED_NAME in main_wb.sheetnames:
+                src_mvr_ws = main_wb[self.MVR_PREFERRED_NAME]
+            else:
+                src_mvr_ws = main_wb[main_wb.sheetnames[0]]
 
         # write to template
         if not os.path.exists(self.TEMPLATE_PATH):
