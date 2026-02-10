@@ -637,10 +637,16 @@ class Alltrans:
             except Exception:
                 r["_lookup_dob"] = None
             r["_lookup_dob_iso"] = self._dob_iso(dob_val)
-            r["_hire_raw"] = r.get(hire_col_lookup)
+            # Safe extraction of Hire Date
+            r["_hire_raw"] = r.get(hire_col_lookup) if hire_col_lookup else ""
 
-        # build direct CDL map
-        lookup_map = pd.Series(lookup_small[hire_col_lookup].values, index=lookup_small["_cdl_key"]).to_dict()
+        # build direct CDL map (safely)
+        lookup_map = {}
+        if hire_col_lookup and hire_col_lookup in lookup_small.columns:
+            try:
+                lookup_map = pd.Series(lookup_small[hire_col_lookup].values, index=lookup_small["_cdl_key"]).to_dict()
+            except Exception:
+                lookup_map = {}
         # build cleaned lookup map and index mapping to support fallback cleaned key matching
         def _clean_key_local(k):
             try:
@@ -655,7 +661,7 @@ class Alltrans:
             kclean = _clean_key_local(kraw)
             if kclean:
                 # prefer first occurrence for map
-                lookup_map_clean.setdefault(kclean, lr.get(hire_col_lookup))
+                lookup_map_clean.setdefault(kclean, lr.get(hire_col_lookup) if hire_col_lookup else "")
             # index mapping for finding matched rows
             lookup_key_to_indices.setdefault(kraw, []).append(i)
             lookup_key_to_indices.setdefault(kclean, []).append(i)
@@ -844,7 +850,7 @@ class Alltrans:
             if found_lookup_idx is not None:
                 matched_lookup_indices.add(found_lookup_idx)
                 lr = lookup_rows[found_lookup_idx]
-                doh_raw = lr.get(hire_col_lookup)
+                doh_raw = lr.get(hire_col_lookup) if hire_col_lookup else ""
                 
                 # Update DOB if missing OR invalid in MVR
                 lookup_dob = lr.get("_lookup_dob")
@@ -907,7 +913,7 @@ class Alltrans:
             append_rec["# MAJOR Violations"] = None
             append_rec["YES"] = None
             append_rec["NO"] = None
-            doh_raw = lr.get(hire_col_lookup) if hire_col_lookup else None
+            doh_raw = lr.get(hire_col_lookup) if hire_col_lookup else ""
             append_rec["DOH_raw"] = doh_raw
             append_rec["DOH"] = self._format_doh_for_excel(doh_raw) if doh_raw not in (None, "") else None
             append_rec["MatchedBy"] = "LookupOnly"
