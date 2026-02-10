@@ -178,6 +178,7 @@ if menu == "MVR All Trans":
 
 
 elif menu == "PDF Maker":
+    st.title("PDF Flattening Tool")
     uploaded = st.file_uploader("Upload PDF", type=["pdf"])
 
     if uploaded:

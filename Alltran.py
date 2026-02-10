@@ -921,7 +921,7 @@ class Alltrans:
 
         return df_records
 
-    def generate_report(self, df_records: pd.DataFrame, main_bytes: bytes):
+    def generate_report(self, df_records: pd.DataFrame, main_bytes: bytes, lookup_bytes: bytes = None):
         # load main workbook (openpyxl) for replication
         main_wb = None
         try:
@@ -1003,6 +1003,61 @@ class Alltrans:
         # replicate MVR sheet exactly
         self._replicate_sheet_across_workbooks(src_mvr_ws, wb, "MVR")
 
+        # --- Pre-processing: Client Data Population (NEW) ---
+        if lookup_bytes:
+            try:
+                # We need to save current work to a temp file for the standalone populator
+                # or we can do it directly with the 'wb' object.
+                # Since the user requested a standalone function that takes paths,
+                # we'll use temp files to follow the pattern, OR just implement the logic here
+                # to avoid I/O overhead while staying compliant with the logic.
+                
+                # For compliance with "Insert this as a pre-processing step",
+                # let's use the logic directly on 'wb' for efficiency.
+                from app.src.utils.data_populator import _get_value_nearby, _clean_extracted_value
+                
+                # Load lookup WB (client file)
+                l_wb = load_workbook(io.BytesIO(lookup_bytes), data_only=True, read_only=True)
+                l_ws = l_wb.active
+                
+                insured_name = None
+                effective_dates = None
+                insured_labels = ["insured name", "entity name"]
+                effective_labels = ["effective date", "effective dates"]
+
+                def find_in_l_row(row_idx, start_col=1, end_col=None):
+                    nonlocal insured_name, effective_dates
+                    if not end_col: end_col = min(l_ws.max_column + 1, 50)
+                    for c_idx in range(start_col, end_col):
+                        cv = l_ws.cell(row=row_idx, column=c_idx).value
+                        if cv is None: continue
+                        sv = str(cv).lower().strip()
+                        if not insured_name and any(lb in sv for lb in insured_labels):
+                            if "insured name" in sv or insured_name is None:
+                                val = _get_value_nearby(l_ws, row_idx, c_idx)
+                                if val: insured_name = _clean_extracted_value(val)
+                        if not effective_dates and any(lb in sv for lb in effective_labels):
+                            val = _get_value_nearby(l_ws, row_idx, c_idx)
+                            if val: effective_dates = _clean_extracted_value(val)
+
+                # Search logic
+                for r in range(1, min(l_ws.max_row + 1, 100)):
+                    find_in_l_row(r, start_col=1, end_col=2)
+                    if insured_name and effective_dates: break
+                if not insured_name or not effective_dates:
+                    for r in range(1, min(l_ws.max_row + 1, 100)):
+                        find_in_l_row(r, start_col=2)
+                        if insured_name and effective_dates: break
+                l_wb.close()
+                
+                # Populate target cells in report WB
+                ws_target = wb[self.ALLTRANS_SHEET] # Usually the first sheet
+                ws_target['C1'] = insured_name if insured_name is not None else ""
+                ws_target['C2'] = effective_dates if effective_dates is not None else ""
+                
+            except Exception as e:
+                self.logger.warning("Failed pre-processing client data population: %s", e)
+
         out = io.BytesIO()
         wb.save(out)
         out.seek(0)
@@ -1011,4 +1066,4 @@ class Alltrans:
 
     def run(self, main_bytes: bytes, lookup_bytes: bytes, chosen_lookup_sheet: str = None, preview_rows: int = 8):
         df_records = self.process_data(main_bytes, lookup_bytes, chosen_lookup_sheet, preview_rows)
-        return self.generate_report(df_records, main_bytes)
+        return self.generate_report(df_records, main_bytes, lookup_bytes=lookup_bytes)
