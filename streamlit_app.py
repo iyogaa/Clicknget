@@ -1,8 +1,12 @@
-import pandas as pd
 import streamlit as st
+import pandas as pd
 import io
 import os
 import tempfile
+import re
+import openpyxl
+import numpy as np
+from unittest import mock
 from Pdf_maker import process_pdf
 
 st.set_page_config(layout="wide")
@@ -103,7 +107,7 @@ if not st.session_state["authenticated"]:
     st.stop()
 
 def get_menu_options(role):
-    base = ["MVR All Trans", "PDF Maker", "PDF Play"]
+    base = ["MVR All Trans", "HDVI-MVR", "PDF Maker", "PDF Play"]
     if role == "ADMIN":
         return base 
     elif role == "QA" or role == "TL":
@@ -175,6 +179,111 @@ if menu == "MVR All Trans":
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e:
                 st.error(f"Error: {e}")
+
+
+elif menu == "HDVI-MVR":
+    from Hdvi import generate_mvr_excel_sheets
+    
+    def remove_familial_suffixes(text):
+        pattern = r'\b(Jr\.|Sr\.|I{1,3}|IV|V|VI|VII|VIII|IX|X)\b'
+        cleaned_text = re.sub(pattern, '', text)
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+        return cleaned_text
+
+    def get_name_component(text, position):
+        text = remove_familial_suffixes(text)
+        text = re.sub(r'[^\w\s]', '', text)
+        if position == "first":
+            return text.split(" ")[0]
+        if position == "last":
+            return text.split(" ")[-1] if " " in text else ""
+        return text
+
+    st.title("HDVI MVR Excel Creation")
+    st.write("Upload files")
+    
+    client_file = st.file_uploader("Upload Client Excel/CSV", key="hdvi_client")
+    excel_file = st.file_uploader("Upload Output Excel (containing MVR sheet)", key="hdvi_excel")
+    
+    client_df = None
+    output_file_name = "HDVI_Output.xlsx"
+
+    if excel_file is not None:
+        output_file_name = excel_file.name
+        if output_file_name.startswith("report_"):
+            output_file_name = output_file_name[len("report_"):]
+
+    if client_file is not None:
+        skip_rows = st.text_input("Enter Number of rows to skip", value="0")
+        try:
+            skip_rows_int = int(skip_rows) if skip_rows else 0
+        except ValueError:
+            skip_rows_int = 0
+            
+        if client_file.name.endswith('.csv'):
+            client_df = pd.read_csv(client_file, skiprows=skip_rows_int)
+            client_df.replace("", np.nan, inplace=True)
+            client_df.dropna(how='all', inplace=True)
+        elif client_file.name.lower().endswith(('.xlsx', '.xls')):
+            # We need to know which sheet to read
+            try:
+                # Preview sheets
+                preview_wb = openpyxl.load_workbook(client_file, read_only=True)
+                sheets = preview_wb.sheetnames
+                sheet_name = st.selectbox("Select sheet to read from Client Excel", options=sheets)
+                client_file.seek(0) # Reset pointer
+                if sheet_name:
+                    client_df = pd.read_excel(client_file, sheet_name=sheet_name, skiprows=skip_rows_int)
+            except Exception as e:
+                st.error(f"Error reading Client Excel: {e}")
+
+    if client_df is not None and excel_file is not None:
+        if st.button("Generate HDVI Report"):
+            try:
+                with st.spinner("Processing..."):
+                    # Fix for openpyxl font family max
+                    p = mock.patch('openpyxl.styles.fonts.Font.family.max', new=100)
+                    p.start()
+                    
+                    # Read MVR data from the "Output Excel"
+                    excel_file.seek(0)
+                    with io.BytesIO(excel_file.read()) as excel_bytes:
+                        workbook_mvr = openpyxl.load_workbook(excel_bytes, data_only=True)
+                        if "MVR" in workbook_mvr.sheetnames:
+                            mvr_sheet = workbook_mvr["MVR"]
+                            data = list(mvr_sheet.values)
+                            if data and len(data) > 1:
+                                # Assuming row 1 (index 1) is columns, row 2+ (index 2+) is data
+                                mvr_df = pd.DataFrame(data[2:], columns=data[1])
+                            else:
+                                mvr_df = pd.DataFrame()
+                        else:
+                            st.error("The uploaded Output Excel does not contain an 'MVR' sheet.")
+                            st.stop()
+
+                    client_df.replace("", np.nan, inplace=True)             
+                    client_df.dropna(how='all', inplace=True)    
+                    
+                    # Call the logic from Hdvi.py
+                    final_wb = generate_mvr_excel_sheets(mvr_df, client_df)
+                    
+                    # Save to buffer
+                    excel_out_bytes = io.BytesIO()
+                    final_wb.save(excel_out_bytes)
+                    excel_out_bytes.seek(0)
+                    
+                    st.success("Excel sheets generated successfully!")
+                    st.download_button(
+                        label="Download HDVI Output",
+                        data=excel_out_bytes,
+                        file_name=output_file_name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                    p.stop()
+            except Exception as e:
+                st.error(f"Error generating report: {e}")
+                import traceback
+                st.code(traceback.format_exc())
 
 
 elif menu == "PDF Maker":

@@ -17,3 +17,6 @@ Pillow
 
 # Utilities
 requests
+PyYAML
+fuzzywuzzy
+numpy
