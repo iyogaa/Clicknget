@@ -1,5 +1,6 @@
 # Core Streamlit
 streamlit
+streamlit-authenticator
 
 # Data Processing
 pandas
@@ -8,15 +9,21 @@ python-dateutil
 pytz
 
 # PDF Processing
-pymupdf
+PyMuPDF  # Provides the 'fitz' module. Do not install 'fitz' package!
 PyPDF2
 img2pdf
 mammoth
 reportlab
 Pillow
+XlsxWriter
 
 # Utilities
 requests
 PyYAML
 fuzzywuzzy
+python-Levenshtein
 numpy
+stqdm
+
+# AI
+litellm

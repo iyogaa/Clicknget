@@ -1,0 +1,76 @@
+In Worker Comp Insurance, businesses have to submit their Loss Runs. Loss Runs contains claims with description of the incidents.
+These incidents descriptions need to be categories in Body part categories.
+Following are the categories with their sub categories
+
+| Body Part - Hierarchy 1 | Body Part - Hierarchy 2                            |
+| ----------------------- | -------------------------------------------------- |
+| Head                    | Multiple Head Injury                               |
+| Head                    | Skull                                              |
+| Head                    | Brain                                              |
+| Head                    | Ear(s)                                             |
+| Head                    | Eye(s)                                             |
+| Head                    | Nose                                               |
+| Head                    | Teeth                                              |
+| Head                    | Mouth                                              |
+| Head                    | Soft Tissue                                        |
+| Head                    | Facial Bones                                       |
+| Neck                    | Multiple Neck Injury                               |
+| Neck                    | Vertebrae                                          |
+| Neck                    | Disc                                               |
+| Neck                    | Soft Tissue                                        |
+| Neck                    | Trachea                                            |
+| Upper Extremities       | Multiple Upper Extremities                         |
+| Upper Extremities       | Upper Arm                                          |
+| Upper Extremities       | Elbow                                              |
+| Upper Extremities       | Lower Arm                                          |
+| Upper Extremities       | Wrist                                              |
+| Upper Extremities       | Hand                                               |
+| Upper Extremities       | Finger(s)                                          |
+| Upper Extremities       | Thumb                                              |
+| Upper Extremities       | Shoulder(s)                                        |
+| Upper Extremities       | Wrist(s) and Hand(s)                               |
+| Trunk                   | Multiple Trunk                                     |
+| Trunk                   | Upper Back Area                                    |
+| Trunk                   | Lower Back Area                                    |
+| Trunk                   | Disc                                               |
+| Trunk                   | Chest                                              |
+| Trunk                   | Sacrum and Coccyx                                  |
+| Trunk                   | Pelvis                                             |
+| Trunk                   | Spinal Cord                                        |
+| Trunk                   | Internal Organs                                    |
+| Trunk                   | Heart                                              |
+| Trunk                   | Lungs                                              |
+| Trunk                   | Abdomen Including Groin                            |
+| Trunk                   | Buttocks                                           |
+| Trunk                   | Lumbar and/or Sacral Vertebrae (Vertebrae          |
+| Lower Extremities       | Multiple Lower Extremities                         |
+| Lower Extremities       | Hip                                                |
+| Lower Extremities       | Upper Leg                                          |
+| Lower Extremities       | Knee                                               |
+| Lower Extremities       | Lower Leg                                          |
+| Lower Extremities       | Ankle                                              |
+| Lower Extremities       | Foot                                               |
+| Lower Extremities       | Toes                                               |
+| Lower Extremities       | Great Toe                                          |
+| Multiple Body Parts     | Artificial Appliance                               |
+| Multiple Body Parts     | Insufficient Info to Properly IdentifyUnclassified |
+| Multiple Body Parts     | No Physical Injury                                 |
+| Multiple Body Parts     | Multiple Body Parts (Including Body                |
+| Multiple Body Parts     | Body Systems and Multiple Body                     |
+| Misc                    | If no body part is mentioned                       |
+
+
+
+
+As per above explanation and examples, categorize the following descriptions. Give me "Description", "Body Part - Hierarchy 1" columns in pipe separated format:
+
+Sample Output:
+SNo | Description | Body Part - Hierarchy 1
+1 | RATATING ON A POLE GROIN PAIN R INGUINAL STRAINS | Misc
+2 | MVA CAUSED BACK DISCOMFORT | Trunk
+
+Important Note:
+1. We will be mapping Description. Do not change input Description text.
+
+{{question_list_str}}
+
