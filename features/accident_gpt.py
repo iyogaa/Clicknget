@@ -2,6 +2,12 @@ import streamlit as st
 from accident_gpt.gpt import run
 
 def run_accident_gpt():
+    st.set_page_config(
+    page_title="Accident GPT",
+    page_icon="🚓",
+    layout="wide",
+    initial_sidebar_state="expanded"
+    )
     st.header("Accident GPT 🚓")
     st.write("Use this tool to categorize incident descriptions into standardised accident categories.")
     st.info("""

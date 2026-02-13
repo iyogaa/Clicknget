@@ -12,7 +12,7 @@ from features.custom_gpt import run_custom_gpt
 # --- APP CONFIGURATION ---
 st.set_page_config(
     page_title="Clicknget AI Tools",
-    page_icon="🤖",
+    page_icon="🐼",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -30,22 +30,22 @@ if not st.session_state["authenticated"]:
 
 # --- SIDEBAR NAVIGATION ---
 with st.sidebar:
-    st.markdown(f"### 👋 Welcome, **{st.session_state['username']}**")
+    st.markdown(f"### Hey, **{st.session_state['username']}**")
     st.markdown(f"**Role:** `{st.session_state['role']}`")
     st.markdown("---")
 
     menu_options = get_menu_options(st.session_state["role"])
     if menu_options:
         # Custom header for the menu
-        st.markdown("### 📋 Navigation")
+        
         menu = st.radio("Select a Tool", menu_options, label_visibility="collapsed")
     else:
-        st.warning("No menu options available for your role.")
+        st.warning("Oops! Rest part is restricted.")
         menu = None
 
     st.markdown("---")
     logout()
-    st.caption("v2.0.0 | Built with ❤️ by Yogaraj")
+    st.caption("v2.0.0 | YR")
 
 # --- MAIN CONTENT ROUTING ---
 if menu:
@@ -68,7 +68,7 @@ if menu:
                 run_cause_gpt()
             elif menu == "Accident GPT":
                 run_accident_gpt()
-            elif menu == "Custom GPT" or menu == "Categorization":
+            elif menu == "Custom GPT Categorization":
                 run_custom_gpt()
         except Exception as e:
             st.error(f"### ❌ An unexpected error occurred in {menu}")

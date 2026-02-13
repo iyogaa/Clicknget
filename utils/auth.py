@@ -32,14 +32,14 @@ def get_menu_options(role):
     # Base tools (MVR and PDF)
     base = ["MVR All Trans", "HDVI-MVR", "PDF Maker", "PDF Play"]
     # GPT tools
-    gpt = ["Body GPT", "Cause GPT", "Accident GPT", "Custom GPT", "Categorization"]
+    gpt = ["Body GPT", "Cause GPT", "Accident GPT", "Custom GPT Categorization"]
     
     if role == "ADMIN":
         return base + gpt
-    elif role in ["QA", "TL"]:
+    elif role in "QA":
         return base + gpt
-    elif role == "MAKER":
-        return base  # Makers might only have base tools
+    elif role in ["MAKER", "TL"]:
+        return "PDF Play"
     return []
 
 def logout():

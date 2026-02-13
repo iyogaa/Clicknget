@@ -2,7 +2,13 @@ import streamlit as st
 from body_gpt.gpt import run
 
 def run_body_gpt():
-    st.header("Body GPT 🚓")
+    st.set_page_config(
+    page_title="Body GPT",
+    page_icon="🧠",
+    layout="wide",
+    initial_sidebar_state="expanded"
+    )
+    st.header("Body GPT 🧠")
     st.write("Use this tool to categorize incident descriptions into standardised body hierarchy categories.")
     st.info("""
     1. Use for Worker Compensation Clients.
