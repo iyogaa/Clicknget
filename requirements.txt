@@ -1,56 +1,50 @@
 # ============================================================================
-# CLICKNGET AI TOOLS - Production Dependencies
-# Python Version: 3.10+
-# Last Updated: 2026-02-13
+# CLICKNGET - Streamlit Cloud Optimized Dependencies
+# Python Version: 3.11 (specified in .python-version)
+# Optimized for: Fast deployment, prebuilt wheels, no source compilation
 # ============================================================================
 
 # --- Core Framework ---
-streamlit==1.31.1
+streamlit>=1.31.0,<2.0.0
 streamlit-authenticator==0.3.1
 
-# --- Data Processing & Analysis ---
-pandas==2.2.0
-numpy==1.26.4
-python-dateutil==2.8.2
-pytz==2024.1
+# --- Data Processing ---
+pandas>=2.2.0,<3.0.0
+numpy>=1.26.0,<2.0.0
+python-dateutil>=2.8.0
+pytz>=2024.1
 
-# --- Excel/Spreadsheet Processing ---
-openpyxl==3.1.2
-XlsxWriter==3.2.0
+# --- Excel/Spreadsheet ---
+openpyxl>=3.1.0
+XlsxWriter>=3.2.0
 
 # --- PDF Processing ---
-PyMuPDF==1.23.26  # Provides 'fitz' module - DO NOT install separate 'fitz' package
-PyPDF2==3.0.1
-reportlab==4.1.0
-Pillow==10.2.0
-img2pdf==0.5.1
+PyMuPDF>=1.23.0,<2.0.0  # Provides 'fitz' - DO NOT install 'fitz' separately
+reportlab>=4.0.0
+Pillow>=10.3.0  # Updated for Python 3.11 compatibility
+img2pdf>=0.5.0
 
 # --- Document Conversion ---
-mammoth==1.6.0  # Word to HTML/text conversion
+mammoth>=1.6.0
 
-# --- String Matching & Fuzzy Logic ---
-fuzzywuzzy==0.18.0
-python-Levenshtein==0.25.0
+# --- String Matching ---
+fuzzywuzzy[speedup]>=0.18.0  # [speedup] includes python-Levenshtein
 
-# --- AI/LLM Integration ---
-litellm==1.30.0
+# --- AI/LLM ---
+litellm>=1.30.0
 
-# --- HTTP & API ---
-requests==2.31.0
+# --- HTTP & Config ---
+requests>=2.31.0
+PyYAML>=6.0.0
 
-# --- Configuration & Serialization ---
-PyYAML==6.0.1
-
-# --- Progress Bars & UI Enhancement ---
-stqdm==0.0.5
-
-# --- Type Hints & Validation (if needed) ---
-# pydantic==2.6.1  # Uncomment if using type validation
+# --- UI Enhancement ---
+stqdm>=0.0.5
 
 # ============================================================================
-# NOTES:
-# - PyMuPDF provides the 'fitz' module. Never install 'fitz' separately.
-# - streamlit-authenticator 0.3.1 is compatible with the current auth pattern
-# - All versions are pinned for reproducibility
-# - Compatible with Python 3.10, 3.11, 3.12, 3.13
+# DEPLOYMENT NOTES:
+# - Python 3.11 specified in .python-version for maximum wheel availability
+# - Version ranges allow patch updates while preventing breaking changes
+# - fuzzywuzzy[speedup] automatically installs python-Levenshtein
+# - All packages have prebuilt wheels for Python 3.11
+# - Removed PyPDF2 (unused in codebase)
 # ============================================================================
