@@ -1,29 +1,56 @@
-# Core Streamlit
-streamlit
-streamlit-authenticator
+# ============================================================================
+# CLICKNGET AI TOOLS - Production Dependencies
+# Python Version: 3.10+
+# Last Updated: 2026-02-13
+# ============================================================================
 
-# Data Processing
-pandas
-openpyxl
-python-dateutil
-pytz
+# --- Core Framework ---
+streamlit==1.31.1
+streamlit-authenticator==0.3.1
 
-# PDF Processing
-PyMuPDF  # Provides the 'fitz' module. Do not install 'fitz' package!
-PyPDF2
-img2pdf
-mammoth
-reportlab
-Pillow
-XlsxWriter
+# --- Data Processing & Analysis ---
+pandas==2.2.0
+numpy==1.26.4
+python-dateutil==2.8.2
+pytz==2024.1
 
-# Utilities
-requests
-PyYAML
-fuzzywuzzy
-python-Levenshtein
-numpy
-stqdm
+# --- Excel/Spreadsheet Processing ---
+openpyxl==3.1.2
+XlsxWriter==3.2.0
 
-# AI
-litellm
+# --- PDF Processing ---
+PyMuPDF==1.23.26  # Provides 'fitz' module - DO NOT install separate 'fitz' package
+PyPDF2==3.0.1
+reportlab==4.1.0
+Pillow==10.2.0
+img2pdf==0.5.1
+
+# --- Document Conversion ---
+mammoth==1.6.0  # Word to HTML/text conversion
+
+# --- String Matching & Fuzzy Logic ---
+fuzzywuzzy==0.18.0
+python-Levenshtein==0.25.0
+
+# --- AI/LLM Integration ---
+litellm==1.30.0
+
+# --- HTTP & API ---
+requests==2.31.0
+
+# --- Configuration & Serialization ---
+PyYAML==6.0.1
+
+# --- Progress Bars & UI Enhancement ---
+stqdm==0.0.5
+
+# --- Type Hints & Validation (if needed) ---
+# pydantic==2.6.1  # Uncomment if using type validation
+
+# ============================================================================
+# NOTES:
+# - PyMuPDF provides the 'fitz' module. Never install 'fitz' separately.
+# - streamlit-authenticator 0.3.1 is compatible with the current auth pattern
+# - All versions are pinned for reproducibility
+# - Compatible with Python 3.10, 3.11, 3.12, 3.13
+# ============================================================================
