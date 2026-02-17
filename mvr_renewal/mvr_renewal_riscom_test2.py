@@ -5,7 +5,6 @@ from typing import Optional, List
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter, column_index_from_string
 from dateutil import parser
-import numpy as np
 import pandas as pd
 import streamlit as st
 from openpyxl import Workbook
@@ -28,6 +27,7 @@ from dateutil.relativedelta import relativedelta
 import os
 import sys
 import traceback
+from fuzzywuzzy import fuzz
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 
@@ -36,10 +36,6 @@ if PROJECT_ROOT not in sys.path:
 
 
     
-
-load_dotenv()
-
-
 
 DATE_FORMAT_STRING = "%m/%d/%Y"
 
@@ -55,22 +51,26 @@ blue_header_fill = PatternFill(
 )
 
 
-class Chart(BaseModel):
-    title: str = ""
-    data_length: int = 5
-    chart_type: str
-    min_col_label: int
-    max_col_label: Optional[int] = None
-    min_col_data: int
-    max_col_data: int
-    min_row_label: int
-    min_row_data: int
-    max_row_label: int
-    max_row_data: int
-    excel_column: str
-    excel_row: int
-    orient: Optional[str] = "col"
-    dimensions: int = 2
+class Chart:
+    def __init__(self, title="", data_length=5, chart_type=None, min_col_label=None, max_col_label=None, 
+                 min_col_data=None, max_col_data=None, min_row_label=None, min_row_data=None, 
+                 max_row_label=None, max_row_data=None, excel_column=None, excel_row=None, 
+                 orient="col", dimensions=2):
+        self.title = title
+        self.data_length = data_length
+        self.chart_type = chart_type
+        self.min_col_label = min_col_label
+        self.max_col_label = max_col_label
+        self.min_col_data = min_col_data
+        self.max_col_data = max_col_data
+        self.min_row_label = min_row_label
+        self.min_row_data = min_row_data
+        self.max_row_label = max_row_label
+        self.max_row_data = max_row_data
+        self.excel_column = excel_column
+        self.excel_row = excel_row
+        self.orient = orient
+        self.dimensions = dimensions
 
 
 def attach_pie_chart(worksheet, chart_obj: Chart):
@@ -978,7 +978,7 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
     grouped_df["Total Incidents"] = (
         grouped_df[["Accident Count", "Minor Count", "Major Count"]]
         .sum(axis=1)
-        .apply(lambda x: np.nan if x == 0 else int(x) if pd.notna(x) else x)
+        .apply(lambda x: pd.NA if x == 0 else int(x) if pd.notna(x) else x)
     )
     grouped_df[["Minor Count", "Major Count", "Accident Count"]] = grouped_df[
         ["Minor Count", "Major Count", "Accident Count"]

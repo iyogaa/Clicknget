@@ -19,14 +19,15 @@ def check_dependencies() -> List[Tuple[str, bool, str]]:
     required_packages = [
         ("streamlit", "Streamlit"),
         ("pandas", "Pandas"),
+        ("numpy", "NumPy"),
         ("openpyxl", "OpenPyXL"),
         ("fitz", "PyMuPDF"),
         ("yaml", "PyYAML"),
         ("PIL", "Pillow"),
         ("reportlab", "ReportLab"),
-        ("litellm", "LiteLLM"),
+        ("dateutil", "python-dateutil"),
+        ("mammoth", "Mammoth"),
         ("fuzzywuzzy", "FuzzyWuzzy"),
-        ("stqdm", "stqdm"),
     ]
     
     results = []

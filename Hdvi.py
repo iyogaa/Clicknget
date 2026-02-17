@@ -3,7 +3,6 @@ import re
 import yaml
 import openpyxl
 import pandas as pd
-import numpy as np
 
 from fuzzywuzzy import fuzz
 from dateutil import parser
@@ -245,7 +244,7 @@ def generate_mvr_data_sheet(df, driver_df):
     grouped_df["Total Incidents"] = (
         grouped_df[["Accident Count", "Minor Count", "Major Count", "Prohibited Count"]]
         .sum(axis=1)
-        .apply(lambda x: np.nan if x == 0 else int(x) if pd.notna(x) else x)
+        .apply(lambda x: pd.NA if x == 0 else int(x) if pd.notna(x) else x)
     )
     # Drop the 'Violation Category Counts' column
     grouped_df.drop(columns=["Violation Category Counts"], inplace=True)
