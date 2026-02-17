@@ -3,13 +3,9 @@ from utils.styles import apply_custom_css
 from utils.auth import init_session_state, show_login, get_menu_options, logout
 from features.mvr_all_trans import run_mvr_all_trans
 from features.hdvi_mvr import run_hdvi_mvr
+from features.riscom_mvr import run_riscom_mvr
 from features.pdf_tools import run_pdf_maker, run_pdf_play
-from features.body_gpt import run_body_gpt
-from features.cause_gpt import run_cause_gpt
-from features.accident_gpt import run_accident_gpt
-from features.custom_gpt import run_custom_gpt
 
-# --- APP CONFIGURATION ---
 st.set_page_config(
     page_title="Clicknget AI Tools",
     page_icon="🐼",
@@ -58,18 +54,15 @@ if menu:
                 run_mvr_all_trans()
             elif menu == "HDVI-MVR":
                 run_hdvi_mvr()
+            elif menu == "Riscom MVR":
+                run_riscom_mvr()
             elif menu == "PDF Maker":
                 run_pdf_maker()
             elif menu == "PDF Play":
                 run_pdf_play()
-            elif menu == "Body GPT":
-                run_body_gpt()
-            elif menu == "Cause GPT":
-                run_cause_gpt()
-            elif menu == "Accident GPT":
-                run_accident_gpt()
-            elif menu == "Custom GPT Categorization":
-                run_custom_gpt()
+
+
+
         except Exception as e:
             st.error(f"### ❌ An unexpected error occurred in {menu}")
             st.error(str(e))

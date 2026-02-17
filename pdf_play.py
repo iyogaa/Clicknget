@@ -1,11 +1,6 @@
 import os
-import io
 import fitz  # pymupdf
-import pandas as pd
 from PIL import Image
-import img2pdf
-import shutil
-import tempfile
 
 # Try to import optional dependencies
 try:
@@ -14,7 +9,7 @@ except ImportError:
     mammoth = None
 
 from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas

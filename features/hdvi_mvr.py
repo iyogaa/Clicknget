@@ -3,7 +3,6 @@ import pandas as pd
 import io
 import re
 import openpyxl
-import numpy as np
 from unittest import mock
 from Hdvi import generate_mvr_excel_sheets
 
@@ -46,7 +45,7 @@ def run_hdvi_mvr():
             
         if client_file.name.endswith('.csv'):
             client_df = pd.read_csv(client_file, skiprows=skip_rows_int)
-            client_df.replace("", np.nan, inplace=True)
+            client_df.replace("", pd.NA, inplace=True)
             client_df.dropna(how='all', inplace=True)
         elif client_file.name.lower().endswith(('.xlsx', '.xls')):
             try:
@@ -81,7 +80,7 @@ def run_hdvi_mvr():
                             st.error("The uploaded Output Excel does not contain an 'MVR' sheet.")
                             st.stop()
 
-                    client_df.replace("", np.nan, inplace=True)             
+                    client_df.replace("", pd.NA, inplace=True)             
                     client_df.dropna(how='all', inplace=True)    
                     
                     final_wb = generate_mvr_excel_sheets(mvr_df, client_df)

@@ -30,14 +30,13 @@ def show_login():
 
 def get_menu_options(role):
     # Base tools (MVR and PDF)
-    base = ["MVR All Trans", "HDVI-MVR", "PDF Maker", "PDF Play"]
+    base = ["MVR All Trans", "HDVI-MVR", "Riscom MVR", "PDF Maker", "PDF Play"]
     # GPT tools
-    gpt = ["Body GPT", "Cause GPT", "Accident GPT", "Custom GPT Categorization"]
     
     if role == "ADMIN":
-        return base + gpt
+        return base
     elif role in "QA":
-        return base + gpt
+        return base
     elif role in ["MAKER", "TL"]:
         return "PDF Play"
     return []
