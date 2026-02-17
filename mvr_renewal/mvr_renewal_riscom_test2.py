@@ -20,11 +20,7 @@ from openpyxl.drawing.text import (
 )
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.styles.numbers import FORMAT_NUMBER_COMMA_SEPARATED1, FORMAT_NUMBER
-from pydantic import BaseModel, Field
 import re
-from ftfy import fix_encoding
-from unidecode import unidecode
-from thefuzz import fuzz
 from openpyxl.cell import MergedCell
 import io
 import zipfile
@@ -32,7 +28,7 @@ from dateutil.relativedelta import relativedelta
 import os
 import sys
 import traceback
-from dotenv import load_dotenv
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 
 if PROJECT_ROOT not in sys.path:
