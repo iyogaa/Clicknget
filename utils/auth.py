@@ -1,10 +1,13 @@
 import streamlit as st
 
 def authenticate(username, password):
-    if "credentials" in st.secrets and username in st.secrets["credentials"]:
-        user_data = st.secrets["credentials"][username]
-        if password == user_data["password"]:
-            return user_data["role"]
+    if "credentials" in st.secrets:
+        credentials = st.secrets["credentials"]
+        # Case-insensitive lookup
+        for cred_username, data in credentials.items():
+            if cred_username.lower() == username.lower():
+                if password == data["password"]:
+                    return data["role"]
     return None
 
 def init_session_state():
@@ -31,14 +34,15 @@ def show_login():
 def get_menu_options(role):
     # Base tools (MVR and PDF)
     base = ["MVR All Trans", "HDVI-MVR", "Riscom MVR", "PDF Maker", "PDF Play"]
-    # GPT tools
     
     if role == "ADMIN":
         return base
-    elif role in "QA":
+    elif role == "QA":
         return base
     elif role in ["MAKER", "TL"]:
-        return "PDF Play"
+        return ["PDF Play"]
+    elif role == "facilitator":
+        return ["PDF Maker", "PDF Play"]
     return []
 
 def logout():

@@ -86,6 +86,29 @@ def split_full_name(full_name: str) -> tuple:
         if not last_name: last_name = full_name
             
         return (first_name, last_name)
+def normalize_cdl_with_flag(cdl_value):
+    if pd.isna(cdl_value):
+        return "", False
+
+    original = str(cdl_value).strip().upper()
+
+    # Dirty if contains letters, hyphen or space
+    is_dirty = bool(re.search(r"[A-Z\- ]", original))
+
+    # Remove hyphen and spaces
+    cleaned = re.sub(r"[-\s]", "", original)
+
+    # Remove trailing state code (2 letters)
+    cleaned = re.sub(r"[A-Z]{2}$", "", cleaned)
+
+    # Keep only alphanumeric
+    cleaned = re.sub(r"[^A-Z0-9]", "", cleaned)
+
+    if cleaned.isdigit():
+        cleaned = cleaned.lstrip("0")
+
+    return cleaned, is_dirty
+
 
 
 def read_state_mapping(file_path="mvr_report_generation/state_mapping.yaml"):
@@ -127,28 +150,43 @@ def format_date_cell(cell):
         return cell
 
 def filter_drivers(driver_row, grouped_row):
-    name_driver = f"{driver_row['First Name']} {driver_row['Last Name']}"
-    name_grouped = f"{grouped_row['First Name']} {grouped_row['Last Name']}"
-    cdl_driver, cdl_grouped = driver_row["CDL Number"], grouped_row["CDL Number"]
-    dob_driver, dob_grouped = driver_row["Date of Birth"], grouped_row["Date of Birth"]
 
-    if strip_non_numeric_and_leading_zeros(
-        cdl_driver
-    ) == strip_non_numeric_and_leading_zeros(cdl_grouped) and not pd.isnull(cdl_driver) and cdl_driver is not None and cdl_driver != "":
-        return True
     try:
-        dob_driver_parsed = parser.parse(dob_driver).date()
-        dob_grouped_parsed = parser.parse(dob_grouped).date()
-    except (ValueError, TypeError):
-        dob_driver_parsed = None
-        dob_grouped_parsed = None
-    if dob_driver_parsed and dob_grouped_parsed and dob_driver_parsed is not None:
-        if dob_driver_parsed == dob_grouped_parsed:
+        cdl_driver, driver_dirty = normalize_cdl_with_flag(
+            driver_row["CDL Number"]
+        )
+        cdl_grouped, grouped_dirty = normalize_cdl_with_flag(
+            grouped_row["CDL Number"]
+        )
+
+        try:
+            dob_driver = parser.parse(
+                str(driver_row["Date of Birth"])
+            ).date()
+            dob_grouped = parser.parse(
+                str(grouped_row["Date of Birth"])
+            ).date()
+            dob_match = dob_driver == dob_grouped
+        except:
+            dob_match = False
+
+        if cdl_driver and cdl_grouped:
+            if cdl_driver == cdl_grouped:
+                if driver_dirty or grouped_dirty:
+                    return dob_match
+                return True
+
+        name_driver = f"{driver_row['First Name']} {driver_row['Last Name']}"
+        name_grouped = f"{grouped_row['First Name']} {grouped_row['Last Name']}"
+
+        if dob_match:
             return match_driver_names(name_driver, name_grouped) >= 80
-    else:
-        return match_driver_names(name_driver, name_grouped) >= 80
-    
-    return False
+
+        return match_driver_names(name_driver, name_grouped) >= 85
+
+    except Exception:
+        return False
+
 
 
 def match_driver_names(name_driver, name_grouped):
@@ -314,6 +352,13 @@ def generate_mvr_data_sheet(df, driver_df):
     grouped_df = grouped_df[column_order + (["Full Name"] if "Full Name" in grouped_df.columns else [])]
     
     driver_df = driver_df.copy() 
+    driver_df["Date of Birth"] = pd.to_datetime(
+        driver_df["Date of Birth"], errors="coerce"
+    )
+    current_date = pd.Timestamp.now()
+    driver_df["Age"] = driver_df["Date of Birth"].apply(
+        lambda dob: current_date.year - dob.year if pd.notnull(dob) else None
+    )
     for col in column_order:
         if col not in driver_df.columns:
             driver_df[col] = None

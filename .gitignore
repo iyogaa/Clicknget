@@ -3,7 +3,8 @@
 # ============================================================================
 
 # --- Secrets & Sensitive Data ---
-.streamlit/secrets.toml
+**/secrets.toml
+**/.streamlit/secrets.toml
 *.env
 .env
 .env.local
