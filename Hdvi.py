@@ -3,6 +3,7 @@ import re
 import yaml
 import openpyxl
 import pandas as pd
+import numpy as np
 
 from fuzzywuzzy import fuzz
 from dateutil import parser
@@ -12,116 +13,10 @@ blue_header_font = Font(name="Calibri", bold=True, size=10, color="FFFFFF")
 blue_header_fill = PatternFill(
     start_color="0033CCCC", end_color="0033CCCC", fill_type="solid"
 )
-
-def split_full_name(full_name: str) -> tuple:
-    """
-    Split Full Name into (First Name, Last Name) based on strict rule-based logic.
-    Always uses 'Full Name' and ignores other sources.
-    """
-    if pd.isna(full_name) or not str(full_name).strip():
-        return ("", "")
-    
-    # Trim and collapse multiple spaces (Data Cleaning Rule 3)
-    full_name = " ".join(str(full_name).split())
-    if not full_name:
-        return ("", "")
-    
-    # Rule 1: Comma Present
-    if "," in full_name:
-        parts = [p.strip() for p in full_name.split(",")]
-        
-        # Case B & C: 3 or more parts
-        if len(parts) >= 3:
-            # First Name = second element, Last Name = first element
-            last_name = parts[0]
-            first_name = parts[1]
-        # Case A: 2 parts (LastName, FirstName MiddleName)
-        else:
-            last_name = parts[0]
-            first_name = ""
-            if len(parts) > 1:
-                right_side = parts[1]
-                tokens = right_side.split()
-                if tokens:
-                    first_name = tokens[0]
-            
-            # CRITICAL GUARANTEE: NEVER empty if Full Name is present
-            if not first_name:
-                first_name = last_name
-        
-        # Double check for empty results due to weird commas like ", "
-        if not first_name.strip(): first_name = full_name
-        if not last_name.strip(): last_name = full_name
-        
-        return (first_name, last_name)
-    
-    # Rule 2: No Comma
-    else:
-        words = full_name.split()
-        if not words:
-            return ("", "")
-        
-        # 1 word
-        if len(words) == 1:
-            return (words[0], words[0])
-        
-        # 2 words
-        if len(words) == 2:
-            return (words[0], words[1])
-        
-        # 3+ words
-        first_name = words[0]
-        suffixes = {"JR", "SR", "II", "III", "IV"}
-        last_word_upper = words[-1].upper().replace(".", "")
-        
-        if last_word_upper in suffixes and len(words) >= 3:
-            # Last two words form the Last Name
-            last_name = words[-2] + " " + words[-1]
-        else:
-            # Last word is the Last Name
-            last_name = words[-1]
-            
-        # Final CRITICAL check
-        if not first_name: first_name = full_name
-        if not last_name: last_name = full_name
-            
-        return (first_name, last_name)
-def normalize_cdl_with_flag(cdl_value):
-    if pd.isna(cdl_value):
-        return "", False
-
-    original = str(cdl_value).strip().upper()
-
-    # Dirty if contains letters, hyphen or space
-    is_dirty = bool(re.search(r"[A-Z\- ]", original))
-
-    # Remove hyphen and spaces
-    cleaned = re.sub(r"[-\s]", "", original)
-
-    # Remove trailing state code (2 letters)
-    cleaned = re.sub(r"[A-Z]{2}$", "", cleaned)
-
-    # Keep only alphanumeric
-    cleaned = re.sub(r"[^A-Z0-9]", "", cleaned)
-
-    if cleaned.isdigit():
-        cleaned = cleaned.lstrip("0")
-
-    return cleaned, is_dirty
-
-
-
-def read_state_mapping(file_path="mvr_report_generation/state_mapping.yaml"):
-    try:
-        with open(file_path, 'r') as file:
-            state_mapping = yaml.safe_load(file)
-        return state_mapping
-    except FileNotFoundError:
-        print(f"Warning: {file_path} not found. Using empty mapping.")
-        return {}
-    except Exception as e:
-        print(f"Error reading state mapping: {e}")
-        return {}
+def read_state_mapping(file_path="state_mapping.yaml"):
+    with open(file_path, 'r') as file:
+        state_mapping = yaml.safe_load(file)
+    return state_mapping
 
 
 def strip_non_numeric_and_leading_zeros(input_string):
@@ -150,43 +45,28 @@ def format_date_cell(cell):
         return cell
 
 def filter_drivers(driver_row, grouped_row):
+    name_driver = f"{driver_row['First Name']} {driver_row['Last Name']}"
+    name_grouped = f"{grouped_row['First Name']} {grouped_row['Last Name']}"
+    cdl_driver, cdl_grouped = driver_row["CDL Number"], grouped_row["CDL Number"]
+    dob_driver, dob_grouped = driver_row["Date of Birth"], grouped_row["Date of Birth"]
 
+    if strip_non_numeric_and_leading_zeros(
+        cdl_driver
+    ) == strip_non_numeric_and_leading_zeros(cdl_grouped) and not pd.isnull(cdl_driver) and cdl_driver is not None and cdl_driver != "":
+        return True
     try:
-        cdl_driver, driver_dirty = normalize_cdl_with_flag(
-            driver_row["CDL Number"]
-        )
-        cdl_grouped, grouped_dirty = normalize_cdl_with_flag(
-            grouped_row["CDL Number"]
-        )
-
-        try:
-            dob_driver = parser.parse(
-                str(driver_row["Date of Birth"])
-            ).date()
-            dob_grouped = parser.parse(
-                str(grouped_row["Date of Birth"])
-            ).date()
-            dob_match = dob_driver == dob_grouped
-        except:
-            dob_match = False
-
-        if cdl_driver and cdl_grouped:
-            if cdl_driver == cdl_grouped:
-                if driver_dirty or grouped_dirty:
-                    return dob_match
-                return True
-
-        name_driver = f"{driver_row['First Name']} {driver_row['Last Name']}"
-        name_grouped = f"{grouped_row['First Name']} {grouped_row['Last Name']}"
-
-        if dob_match:
+        dob_driver_parsed = parser.parse(dob_driver).date()
+        dob_grouped_parsed = parser.parse(dob_grouped).date()
+    except (ValueError, TypeError):
+        dob_driver_parsed = None
+        dob_grouped_parsed = None
+    if dob_driver_parsed and dob_grouped_parsed and dob_driver_parsed is not None:
+        if dob_driver_parsed == dob_grouped_parsed:
             return match_driver_names(name_driver, name_grouped) >= 80
-
-        return match_driver_names(name_driver, name_grouped) >= 85
-
-    except Exception:
-        return False
-
+    else:
+        return match_driver_names(name_driver, name_grouped) >= 80
+    
+    return False
 
 
 def match_driver_names(name_driver, name_grouped):
@@ -239,7 +119,7 @@ def generate_mvr_data_sheet(df, driver_df):
 
     # Rename columns
     grouped_df.columns = [
-        "Full Name",
+        "Driver Full Name",
         "CDL Number",
         "DOB",
         "Date of Birth",
@@ -282,7 +162,7 @@ def generate_mvr_data_sheet(df, driver_df):
     grouped_df["Total Incidents"] = (
         grouped_df[["Accident Count", "Minor Count", "Major Count", "Prohibited Count"]]
         .sum(axis=1)
-        .apply(lambda x: pd.NA if x == 0 else int(x) if pd.notna(x) else x)
+        .apply(lambda x: np.nan if x == 0 else int(x) if pd.notna(x) else x)
     )
     # Drop the 'Violation Category Counts' column
     grouped_df.drop(columns=["Violation Category Counts"], inplace=True)
@@ -305,16 +185,6 @@ def generate_mvr_data_sheet(df, driver_df):
     grouped_df["Excluded"] = None
     grouped_df["Prohibited"] = [False]*grouped_df.shape[0]
     grouped_df["MVR Score"] = None
-    
-    # Apply strict Parsing to aggregated data immediately
-    # This ensures matching can use parsed names if needed and satisfies the "ignore existing" rule
-    def safe_split_apply(val):
-        res = split_full_name(val)
-        return pd.Series({"First Name": res[0], "Last Name": res[1]})
-
-    parts_grouped = grouped_df["Full Name"].astype(str).replace("nan", "").apply(safe_split_apply)
-    grouped_df["First Name"] = parts_grouped["First Name"]
-    grouped_df["Last Name"] = parts_grouped["Last Name"]
 
     # Reorder columns to match the required order
     column_order = [
@@ -342,49 +212,42 @@ def generate_mvr_data_sheet(df, driver_df):
     ]
     state_mapping = read_state_mapping()
     # Reorder columns
-    # Ensure grouped_df has all columns in order (needed for matching/filling)
-    # We keep Full Name in both for now
-    for col in column_order:
-        if col not in grouped_df.columns:
-            grouped_df[col] = None
+    grouped_df = grouped_df[column_order]
+    for column in column_order:
+        if column not in driver_df.columns:
+            driver_df[column] = None
+    driver_df = driver_df[column_order]
+    if "First Name" not in driver_df.columns and "Last Name" not in driver_df.columns and "Name" in driver_df.columns:
+        driver_df["First Name"] = driver_df.apply(
+            lambda row: (
+                row["First Name"]
+                if pd.notnull(row["First Name"])
+                else row["Name"].split(" ", 1)[0]
+            ),
+            axis=1,
+        )
+        driver_df["Last Name"] = driver_df.apply(
+            lambda row: (
+                row["Last Name"]
+                if pd.notnull(row["Last Name"])
+                else row["Name"].split(" ", 1)[1] if " " in row["Name"] else ""
+            ),
+            axis=1,
+        )
+    elif "Name" in driver_df.columns:
+        driver_df[["First Name", "Last Name"]] = driver_df["Name"].str.split(
+            " ", n=1, expand=True
+        )
+    driver_df["Date of Birth"] =  driver_df["Date of Birth"].apply(lambda cell: format_date_cell(cell))
+    driver_df["Expiration Date"] = driver_df["Expiration Date"].apply(lambda cell: format_date_cell(cell))
+    driver_df["Hire Date"] = driver_df["Hire Date"].apply(lambda cell: format_date_cell(cell))
     
-    # Reorder columns
-    grouped_df = grouped_df[column_order + (["Full Name"] if "Full Name" in grouped_df.columns else [])]
     
-    driver_df = driver_df.copy() 
-    driver_df["Date of Birth"] = pd.to_datetime(
-        driver_df["Date of Birth"], errors="coerce"
-    )
-    current_date = pd.Timestamp.now()
-    driver_df["Age"] = driver_df["Date of Birth"].apply(
-        lambda dob: current_date.year - dob.year if pd.notnull(dob) else None
-    )
-    for col in column_order:
-        if col not in driver_df.columns:
-            driver_df[col] = None
-    
-    # Handle 'Full Name' for Client data (driver_df)
-    if "Full Name" not in driver_df.columns:
-        if "Name" in driver_df.columns:
-            driver_df["Full Name"] = driver_df["Name"]
-        elif "First Name" in driver_df.columns and "Last Name" in driver_df.columns:
-            # Create Full Name from FN/LN parts to satisfy logic requirement
-            driver_df["Full Name"] = driver_df["First Name"].fillna("").astype(str) + " " + driver_df["Last Name"].fillna("").astype(str)
-    
-    # Apply strict Parsing to client data (driver_df)
-    if "Full Name" in driver_df.columns:
-        parts_client = driver_df["Full Name"].astype(str).replace("nan", "").apply(safe_split_apply)
-        driver_df["First Name"] = parts_client["First Name"]
-        driver_df["Last Name"] = parts_client["Last Name"]
-    
-    # Apply state mapping
     try:
-        if "License State" in driver_df.columns:
-            driver_df["License State"] = driver_df["License State"].str.lower().map(state_mapping).fillna(driver_df["License State"])
+        driver_df["License State"] = driver_df["License State"].str.lower().map(state_mapping).fillna(driver_df["License State"])
     except Exception as e:
         print(f"Error mapping license states: {e}")
-
-    # Use Parsed names for matching if available, otherwise fallback to Full Name reconstructed
+        driver_df["License State"] = None
     for i, driver_row in driver_df.iterrows():
         try:
             matching_rows = grouped_df.apply(
@@ -404,31 +267,33 @@ def generate_mvr_data_sheet(df, driver_df):
             print(f"Error processing driver row {i}: {e}")
             continue
     
-    # Final Date Formatting
     driver_df["Date of Birth"] = driver_df["Date of Birth"].apply(
     lambda dob: dob.strftime("%m/%d/%Y") if pd.notnull(dob) and isinstance(dob, pd.Timestamp) else dob
     )
+    #Hire date issue (Century logic)
+    # 🔹 Fix Hire Date parsing properly first
+    driver_df["Hire Date"] = pd.to_datetime(
+        driver_df["Hire Date"],
+        errors="coerce"
+    )
+
+    def fix_century(date):
+        if pd.isna(date):
+            return pd.NaT
+        if date.year < 1950:   # handles 1926 → 2026
+            return date.replace(year=date.year + 100)
+        return date
+
+    driver_df["Hire Date"] = driver_df["Hire Date"].apply(fix_century)
+
+    # 🔹 Final formatting
     driver_df["Hire Date"] = driver_df["Hire Date"].apply(
-        lambda doh: doh.strftime("%m/%d/%Y") if pd.notnull(doh) and isinstance(doh, pd.Timestamp) else doh
-        )
+        lambda x: x.strftime("%m/%d/%Y") if pd.notnull(x) else ""
+    )
     driver_df["Expiration Date"] = driver_df["Expiration Date"].apply(
         lambda expd: expd.strftime("%m/%d/%Y") if pd.notnull(expd)  and isinstance(expd, pd.Timestamp) else expd
         )
-    
-    # FINAL CRITICAL RE-PARSE
-    # This acts as the Hulk-level guard to ensure NO blanks exist in the final sheet
-    # regardless of matching results or null merges.
-    if "Full Name" in driver_df.columns:
-        # We re-read Full Name and re-apply split_full_name one last time to Parsed columns
-        final_parts = driver_df["Full Name"].astype(str).replace("nan", "").apply(safe_split_apply)
-        driver_df["First Name"] = final_parts["First Name"]
-        driver_df["Last Name"] = final_parts["Last Name"]
-    
-    # The columns First Name and Last Name are now GUARANTEED to be populated
-    # based on the Full Name current in driver_df.
-    
-    # Strictly return only the columns in column_order (which excludes Full Name)
-    mvr_data = driver_df[column_order].to_dict(orient="records")
+    mvr_data = driver_df.to_dict(orient="records")
     return mvr_data
 
 
