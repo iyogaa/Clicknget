@@ -961,6 +961,7 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
         "Accident Count",
         "Violation Description"
     ]
+    # Calculate initial Status and Comments based on MVR data
 
     # Convert relevant columns to integers (handle NaN values)
     grouped_df["Accident Count"] = (
@@ -1050,9 +1051,19 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
         "driver_list_flag",  # this column is just for supporting post logic
         "mvr_list_flag",  # this column is just for supporting post logic
     ]
-
-    # Reorder columns
+    #adddelete date
+        # Get proposed_effective_date from original data
+    proposed_effective_date = ""
+    if not df.empty and 'proposed_effective_date' in df.columns:
+        valid_dates = df['proposed_effective_date'].dropna()
+        if not valid_dates.empty:
+            proposed_effective_date = pd.to_datetime(valid_dates.iloc[0]).strftime("%m/%d/%Y")
+    
+    # Reorder columns first
     grouped_df = grouped_df[column_order]
+    
+    # Add AddDeleteDate column after Date MVR Ordered
+    grouped_df["Proposed Effective Date"] = proposed_effective_date
     
     # Calculate initial Status and Comments based on MVR data
     if vehicle_df is not None and not vehicle_df.empty and "Vehicle Body Type" in vehicle_df.columns and not vehicle_df["Vehicle Body Type"].isnull().all():
@@ -1148,6 +1159,8 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
                     # No MVR match
                     pass
 
+                        # Add Proposed Effective Date to matched drivers
+            merged_drivers_df["Proposed Effective Date"] = proposed_effective_date
             mvr_data = merged_drivers_df.to_dict(orient="records")
             
             # Add unmatched MVR rows (MVRs that didn't match any driver in the list)
@@ -1157,6 +1170,8 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
                 unmatched_rows = unmatched_grouped_df.copy()
                 unmatched_rows['driver_list_flag'] = False
                 unmatched_rows['mvr_list_flag'] = True
+                                # Add Proposed Effective Date to unmatched MVRs
+                unmatched_rows["Proposed Effective Date"] = proposed_effective_date
                 mvr_data.extend(unmatched_rows.to_dict(orient="records"))
 
             ''' Post logic '''
@@ -1166,6 +1181,8 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
             mvr_data = filter_and_cleanup_mvr_data(mvr_data)
         else:
             # If Driver Df is empty/invalid, just return MVR data
+                        # Add Proposed Effective Date when no driver list
+            grouped_df["Proposed Effective Date"] = proposed_effective_date
             mvr_data = grouped_df.to_dict(orient="records")
     else:
         # If no driver list provided

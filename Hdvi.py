@@ -5,6 +5,8 @@ import openpyxl
 import pandas as pd
 import numpy as np
 
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
 from fuzzywuzzy import fuzz
 from dateutil import parser
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -270,26 +272,106 @@ def generate_mvr_data_sheet(df, driver_df):
     driver_df["Date of Birth"] = driver_df["Date of Birth"].apply(
     lambda dob: dob.strftime("%m/%d/%Y") if pd.notnull(dob) and isinstance(dob, pd.Timestamp) else dob
     )
-    #Hire date issue (Century logic)
-    # 🔹 Fix Hire Date parsing properly first
+    #hire date
+    
     driver_df["Hire Date"] = pd.to_datetime(
-        driver_df["Hire Date"],
-        errors="coerce"
+        driver_df["Hire Date"], errors="coerce"
     )
 
-    def fix_century(date):
-        if pd.isna(date):
-            return pd.NaT
-        if date.year < 1950:   # handles 1926 → 2026
-            return date.replace(year=date.year + 100)
-        return date
+    dob_datetime = pd.to_datetime(
+        driver_df["Date of Birth"], errors="coerce"
+    )
 
-    driver_df["Hire Date"] = driver_df["Hire Date"].apply(fix_century)
+    today = pd.Timestamp.today().normalize()
+    tolerance = pd.DateOffset(years=1)
 
-    # 🔹 Final formatting
+    driver_df["Hire_Date_Flag"] = ""
+
+    # ----------------------------
+    # 2️⃣ Century Correction (Simple & Safe)
+    # ----------------------------
+
+    # Extract 2-digit year safely
+    yy = driver_df["Hire Date"].dt.year % 100
+
+    candidate_1900 = driver_df["Hire Date"].apply(
+        lambda x: x.replace(year=1900 + x.year % 100) if pd.notna(x) else pd.NaT
+    )
+
+    candidate_2000 = driver_df["Hire Date"].apply(
+        lambda x: x.replace(year=2000 + x.year % 100) if pd.notna(x) else pd.NaT
+    )
+
+    dob_exists = dob_datetime.notna()
+    hire_exists = driver_df["Hire Date"].notna()
+
+    valid_1900 = (
+        hire_exists &
+        dob_exists &
+        (candidate_1900 > dob_datetime) &
+        (candidate_1900 <= today + tolerance) &
+        ((candidate_1900 - dob_datetime).dt.days / 365.25 >= 18)
+    )
+
+    valid_2000 = (
+        hire_exists &
+        dob_exists &
+        (candidate_2000 > dob_datetime) &
+        (candidate_2000 <= today + tolerance) &
+        ((candidate_2000 - dob_datetime).dt.days / 365.25 >= 18)
+    )
+
+    # Apply corrections
+    driver_df.loc[valid_1900 & ~valid_2000, "Hire Date"] = candidate_1900
+    driver_df.loc[valid_2000 & ~valid_1900, "Hire Date"] = candidate_2000
+
+    # Flag corrected
+    driver_df.loc[
+        (valid_1900 ^ valid_2000),
+        "Hire_Date_Flag"
+    ] = "Century Corrected"
+
+    # Flag invalid
+    driver_df.loc[
+        hire_exists & dob_exists & ~(valid_1900 | valid_2000),
+        "Hire_Date_Flag"
+    ] = "Invalid - Manual Review"
+
+    # If DOB missing → keep Hire Date as-is and flag
+    driver_df.loc[
+        hire_exists & ~dob_exists,
+        "Hire_Date_Flag"
+    ] = "Missing DOB - Not Validated"
+
+    # ----------------------------
+    # 3️⃣ Format ONLY Hire Date (DOB untouched)
+    # ----------------------------
     driver_df["Hire Date"] = driver_df["Hire Date"].apply(
         lambda x: x.strftime("%m/%d/%Y") if pd.notnull(x) else ""
     )
+
+    # ----------------------------
+    # 4️⃣ Excel Red Highlight
+    # ----------------------------
+    output_file = "output.xlsx"
+    driver_df.to_excel(output_file, index=False)
+
+    wb = load_workbook(output_file)
+    ws = wb.active
+
+    red_fill = PatternFill(start_color="FF0000",
+                        end_color="FF0000",
+                        fill_type="solid")
+
+    headers = [cell.value for cell in ws[1]]
+    hire_col = headers.index("Hire Date") + 1
+    flag_col = headers.index("Hire_Date_Flag") + 1
+
+    for row in ws.iter_rows(min_row=2):
+        if row[flag_col - 1].value:
+            row[hire_col - 1].fill = red_fill
+
+    wb.save(output_file)
     driver_df["Expiration Date"] = driver_df["Expiration Date"].apply(
         lambda expd: expd.strftime("%m/%d/%Y") if pd.notnull(expd)  and isinstance(expd, pd.Timestamp) else expd
         )
