@@ -14,7 +14,7 @@ def run_pdf_tools_consolidated():
     with col2:
         pdf_tool = st.selectbox(
             "Choose PDF Tool:",
-            options=["PDF Maker", "PDF Play", "Excel to PDF Converter"],
+            options=["PDF Maker", "PDF Play"],
             label_visibility="collapsed",
             key="pdf_tool_selector"
         )
@@ -30,20 +30,6 @@ def run_pdf_tools_consolidated():
             
         elif pdf_tool == "PDF Play":
             run_pdf_play()
-            
-        elif pdf_tool == "Excel to PDF Converter":
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05)); border-left: 4px solid #10B981; border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.5rem; border: 1px solid rgba(16, 185, 129, 0.3);">
-                <div style="display: flex; align-items: center; gap: 0.75rem;">
-                    <div style="font-size: 1.75rem;">📊</div>
-                    <div>
-                        <h3 style="margin: 0; color: #10B981;">Excel to PDF Converter</h3>
-                        <p style="margin: 0.25rem 0 0 0; color: var(--text-muted); font-size: 0.85rem;">Convert Excel spreadsheets to professional PDF documents</p>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            st.info("📄 Excel to PDF conversion is powered by PDF Play tools. Select 'PDF Play' above to get started.")
             
     except Exception as e:
         col1, col2 = st.columns([3, 1])

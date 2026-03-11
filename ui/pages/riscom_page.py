@@ -20,9 +20,9 @@ def run_riscom_mvr():
             # Process button
             col1, col2, col3 = st.columns([2, 1.5, 2])
             with col2:
-                if st.button("⚡ Process Report", use_container_width=True):
+                if st.button("Process Report", use_container_width=True):
                     try:
-                        with st.spinner("🔄 Processing MVR Report..."):
+                        with st.spinner("Processing MVR Report..."):
                             
                             # Get Original File Name
                             original_filename = uploaded_file.name
@@ -49,14 +49,9 @@ def run_riscom_mvr():
                             df = pd.DataFrame(processed_data)
                             
                             # --- SUMMARY METRICS SECTION ---
-                            st.markdown("""
-                            <div style="margin: 2rem 0 1.5rem 0; padding-bottom: 1rem; border-bottom: 2px solid var(--border-color);">
-                                <h3 style="margin: 0;">📊 Summary Metrics</h3>
-                            </div>
-                            """, unsafe_allow_html=True)
                             
-                            total_drivers = len(df)
-                            approved_count = len(df[df['Status'].astype(str).str.lower() == 'approved'])
+                            #total_drivers = len(df)
+                            #approved_count = len(df[df['Status'].astype(str).str.lower() == 'approved'])
                             pending_count = len(df[df['Status'].astype(str).str.lower() == 'pending'])
                             
                             missing_mvr_count = len(df[df.get('MVR Received', 'FALSE').astype(str).str.upper() == 'FALSE'])
@@ -76,81 +71,25 @@ def run_riscom_mvr():
                             # Render metrics with modern cards
                             col1, col2, col3 = st.columns(3)
                             
-                            with col1:
-                                st.markdown(f"""
-                                <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; text-align: center;">
-                                    <p style="margin: 0; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Total Processed</p>
-                                    <p style="margin: 0.5rem 0 0 0; font-size: 2.5rem; font-weight: 700; color: #6366F1;">{total_drivers}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            
-                            with col2:
-                                st.markdown(f"""
-                                <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; text-align: center;">
-                                    <p style="margin: 0; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Approved</p>
-                                    <p style="margin: 0.5rem 0 0 0; font-size: 2.5rem; font-weight: 700; color: #10B981;">{approved_count}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            
-                            with col3:
-                                st.markdown(f"""
-                                <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; text-align: center;">
-                                    <p style="margin: 0; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Pending</p>
-                                    <p style="margin: 0.5rem 0 0 0; font-size: 2.5rem; font-weight: 700; color: #F59E0B;">{pending_count}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
                             
                             col4, col5, col6 = st.columns(3)
                             
-                            with col4:
-                                st.markdown(f"""
-                                <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; text-align: center;">
-                                    <p style="margin: 0; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Missing MVR</p>
-                                    <p style="margin: 0.5rem 0 0 0; font-size: 2.5rem; font-weight: 700; color: #EF4444;">{missing_mvr_count}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
                             
-                            with col5:
-                                st.markdown(f"""
-                                <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; text-align: center;">
-                                    <p style="margin: 0; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Medical Issues</p>
-                                    <p style="margin: 0.5rem 0 0 0; font-size: 2.5rem; font-weight: 700; color: #06B6D4;">{medical_issues_count}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
                             
-                            with col6:
-                                st.markdown(f"""
-                                <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; text-align: center;">
-                                    <p style="margin: 0; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">With Violations</p>
-                                    <p style="margin: 0.5rem 0 0 0; font-size: 2.5rem; font-weight: 700; color: #EC4899;">{violations_count}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
+                            #st.dataframe(df, use_container_width=True)
                             
-                            st.markdown("")
-                            
-                            # --- DATA SECTION ---
-                            st.markdown("""
-                            <div style="margin: 2rem 0 1.5rem 0; padding-bottom: 1rem; border-bottom: 2px solid var(--border-color);">
-                                <h3 style="margin: 0;">📋 Processed Data</h3>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            st.dataframe(df, use_container_width=True)
-                            
-                            st.markdown("")
-                            
+                            #st.markdown("")
                             # Download button
                             col1, col2, col3 = st.columns([2, 1.5, 2])
-                            with col2:
-                                st.download_button(
-                                    label="📥 Download Excel",
-                                    data=buffer,
-                                    file_name=dynamic_output_name,
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                    use_container_width=True
-                                )
+                            st.download_button(
+                                label="Download",
+                                data=buffer,
+                                file_name=dynamic_output_name,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
                             
-                            st.success("✅ Processing complete!")
+                            st.success("Processing complete!")
                             
                     except Exception as e:
                         st.error(f"❌ An error occurred during processing: {str(e)}")

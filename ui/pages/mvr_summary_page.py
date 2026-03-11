@@ -134,7 +134,7 @@ def run_mvr_summary():
 
     <div class="header-content">
         <p class="eyebrow">Motor Vehicle Records</p>
-        <h1 class="page-title"><em>MVR</em> Summary Reports</h1>
+        <h1 class="page-title">MVR Summary Reports</h1>
         <p class="page-subtitle">Process and analyze Motor Vehicle Records from multiple sources</p>
         <div class="rule-bottom"></div>
     </div>

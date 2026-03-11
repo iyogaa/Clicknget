@@ -24,7 +24,7 @@ def get_name_component(text, position):
 def run_hdvi_mvr():
     
     # Create tabs for better organization
-    tab1, tab2 = st.tabs(["📤 Upload & Process", " "])
+    tab1, tab2 = st.tabs(["Upload & Process", " "])
     
     st.markdown("Upload Client Excel/CSV")    
     client_file = st.file_uploader("Upload Client Excel/CSV", type=['xlsx', 'xls', 'csv'], key="hdvi_client", label_visibility="collapsed")
@@ -45,10 +45,6 @@ def run_hdvi_mvr():
 
         if client_file is not None:
             # Configuration section
-            st.markdown("""
-            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.5rem;">
-                <h4 style="margin: 0 0 1rem 0; color: var(--text-primary);">⚙️ Configuration</h4>
-            """, unsafe_allow_html=True)
             
             skip_rows = st.text_input("Number of rows to skip", value="0", help="Skip header rows if needed")
             try:
@@ -86,9 +82,9 @@ def run_hdvi_mvr():
             # Process button
             col1, col2, col3 = st.columns([2, 1.5, 2])
             with col2:
-                if st.button("⚡ Generate Report", use_container_width=True):
+                if st.button("Generate Report", use_container_width=True):
                     try:
-                        with st.spinner("🔄 Processing HDVI Report..."):
+                        with st.spinner("Processing HDVI Report..."):
                             # Fix for openpyxl font family max
                             p = mock.patch('openpyxl.styles.fonts.Font.family.max', new=100)
                             p.start()
@@ -116,9 +112,9 @@ def run_hdvi_mvr():
                             final_wb.save(excel_out_bytes)
                             excel_out_bytes.seek(0)
                             
-                            st.success("✅ Excel sheets generated successfully!")
+                            #st.success("✅ Excel sheets generated successfully!")
                             st.download_button(
-                                label="📥 Download HDVI Output",
+                                label="Download",
                                 data=excel_out_bytes,
                                 file_name=output_file_name,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

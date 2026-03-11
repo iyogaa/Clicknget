@@ -5,7 +5,7 @@ from openpyxl import load_workbook
 
 def run_mvr_all_trans():
     
-    tab1, tab2 = st.tabs(["📤 Upload & Process", " "])
+    tab1, tab2 = st.tabs(["Upload & Process", " "])
     
     with tab1:
         st.markdown("Upload Client Excel")
@@ -18,11 +18,6 @@ def run_mvr_all_trans():
         st.markdown("</div>", unsafe_allow_html=True)
         
         if main_file and lookup_file:
-            # Detection section
-            st.markdown("""
-            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.5rem;">
-                <h4 style="margin: 0 0 1rem 0; color: var(--text-primary);">📋 Sheet Detection</h4>
-            """, unsafe_allow_html=True)
             
             chosen_sheet = None
             try:
@@ -44,7 +39,7 @@ def run_mvr_all_trans():
             # Process button
             col1, col2, col3 = st.columns([2, 1.5, 2])
             with col2:
-                if st.button("⚡ Generate Report", use_container_width=True):
+                if st.button("Generate Report", use_container_width=True):
                     try:
                         main_bytes = main_file.read()
                         lookup_bytes = lookup_file.read()
@@ -54,16 +49,16 @@ def run_mvr_all_trans():
                                     alltrans_header_row=4,#Fixed constant row for Column Headers
                                     mvr_sheet_name="MVR")
                         
-                        with st.spinner("🔄 Processing Alltrans..."):
+                        with st.spinner("Processing Alltrans..."):
                             out = gen.run(main_bytes, lookup_bytes, chosen_lookup_sheet=chosen_sheet, preview_rows=8)
 
                         original_name = getattr(main_file, "name", None)
                         base = original_name.rsplit(".", 1)[0] if original_name else "Final_Report"
                         out_name = f"{base}.xlsx"
                         
-                        st.success("✅ Report generated successfully!")
+                        #st.success("Report generated successfully!")
                         st.download_button(
-                            "📥 Download Final Report", 
+                            "Download", 
                             data=out, 
                             file_name=out_name,
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

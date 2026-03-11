@@ -5,8 +5,6 @@ import openpyxl
 import pandas as pd
 import numpy as np
 
-from openpyxl import load_workbook
-from openpyxl.styles import PatternFill
 from fuzzywuzzy import fuzz
 from dateutil import parser
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -15,7 +13,7 @@ blue_header_font = Font(name="Calibri", bold=True, size=10, color="FFFFFF")
 blue_header_fill = PatternFill(
     start_color="0033CCCC", end_color="0033CCCC", fill_type="solid"
 )
-def read_state_mapping(file_path="config/state_mapping.yaml"):
+def read_state_mapping(file_path="C:\\Users\\HP\\Clicknget\\core\\processors\\state_mapping.yaml"):
     with open(file_path, 'r') as file:
         state_mapping = yaml.safe_load(file)
     return state_mapping
@@ -27,24 +25,31 @@ def strip_non_numeric_and_leading_zeros(input_string):
 
 def format_date_cell(cell):
     try:
-        if pd.isna(cell):  # Handle NaN values safely
+        if pd.isna(cell):
             return pd.NaT
-        if isinstance(cell, pd.Timestamp) or isinstance(cell, datetime.datetime):  # If already a Timestamp, return formatted string
-            return cell.strftime('%m/%d/%Y')
-        cell = str(cell).strip()  # Convert to string and strip spaces
+
+        if isinstance(cell, (pd.Timestamp, datetime.datetime)):
+            return cell
+
+        cell = str(cell).strip()
         cell = cell.replace("-", "/")
-        # Try parsing with 4-digit year first
-        date = pd.to_datetime(cell, format='%m/%d/%Y', errors='coerce')
-        if pd.isna(date):
-            # If parsing fails, try with 2-digit year
-            date = pd.to_datetime(cell, format='%m/%d/%y', errors='coerce')
-            if date.year > 2025:
-                date = date.replace(year=date.year - 100)
-        
-        return date.strftime('%m/%d/%Y') if pd.notna(date) else pd.NaT  # Standard output format
+
+        # Detect if input year is 2-digit
+        year_part = cell.split("/")[-1]
+        is_two_digit_year = len(year_part) == 2
+
+        # Parse date
+        date = pd.to_datetime(cell, errors="coerce")
+
+        # Apply century fix ONLY for 2-digit years
+        if is_two_digit_year and pd.notna(date) and date.year > datetime.datetime.now().year:
+            date = date.replace(year=date.year - 100)
+
+        return date
+
     except Exception as e:
         print(f"Error converting date: {e}")
-        return cell
+        return pd.NaT
 
 def filter_drivers(driver_row, grouped_row):
     name_driver = f"{driver_row['First Name']} {driver_row['Last Name']}"
@@ -272,115 +277,15 @@ def generate_mvr_data_sheet(df, driver_df):
     driver_df["Date of Birth"] = driver_df["Date of Birth"].apply(
     lambda dob: dob.strftime("%m/%d/%Y") if pd.notnull(dob) and isinstance(dob, pd.Timestamp) else dob
     )
-    #hire date
-    
-    driver_df["Hire Date"] = pd.to_datetime(
-        driver_df["Hire Date"], errors="coerce"
-    )
-
-    dob_datetime = pd.to_datetime(
-        driver_df["Date of Birth"], errors="coerce"
-    )
-
-    today = pd.Timestamp.today().normalize()
-    tolerance = pd.DateOffset(years=1)
-
-    driver_df["Hire_Date_Flag"] = ""
-
-    # ----------------------------
-    # 2️⃣ Century Correction (Simple & Safe)
-    # ----------------------------
-
-    # Extract 2-digit year safely
-    yy = driver_df["Hire Date"].dt.year % 100
-
-    candidate_1900 = driver_df["Hire Date"].apply(
-        lambda x: x.replace(year=1900 + x.year % 100) if pd.notna(x) else pd.NaT
-    )
-
-    candidate_2000 = driver_df["Hire Date"].apply(
-        lambda x: x.replace(year=2000 + x.year % 100) if pd.notna(x) else pd.NaT
-    )
-
-    dob_exists = dob_datetime.notna()
-    hire_exists = driver_df["Hire Date"].notna()
-
-    valid_1900 = (
-        hire_exists &
-        dob_exists &
-        (candidate_1900 > dob_datetime) &
-        (candidate_1900 <= today + tolerance) &
-        ((candidate_1900 - dob_datetime).dt.days / 365.25 >= 18)
-    )
-
-    valid_2000 = (
-        hire_exists &
-        dob_exists &
-        (candidate_2000 > dob_datetime) &
-        (candidate_2000 <= today + tolerance) &
-        ((candidate_2000 - dob_datetime).dt.days / 365.25 >= 18)
-    )
-
-    # Apply corrections
-    driver_df.loc[valid_1900 & ~valid_2000, "Hire Date"] = candidate_1900
-    driver_df.loc[valid_2000 & ~valid_1900, "Hire Date"] = candidate_2000
-
-    # Flag corrected
-    driver_df.loc[
-        (valid_1900 ^ valid_2000),
-        "Hire_Date_Flag"
-    ] = "Century Corrected"
-
-    # Flag invalid
-    driver_df.loc[
-        hire_exists & dob_exists & ~(valid_1900 | valid_2000),
-        "Hire_Date_Flag"
-    ] = "Invalid - Manual Review"
-
-    # If DOB missing → keep Hire Date as-is and flag
-    driver_df.loc[
-        hire_exists & ~dob_exists,
-        "Hire_Date_Flag"
-    ] = "Missing DOB - Not Validated"
-
-    # ----------------------------
-    # 3️⃣ Format ONLY Hire Date (DOB untouched)
-    # ----------------------------
     driver_df["Hire Date"] = driver_df["Hire Date"].apply(
-        lambda x: x.strftime("%m/%d/%Y") if pd.notnull(x) else ""
-    )
-
-    # Store flag info BEFORE dropping the column
-    invalid_rows = driver_df["Hire_Date_Flag"].notna() & (driver_df["Hire_Date_Flag"] != "")
-
-    # Drop flag column so it doesn't appear in Excel
-    output_df = driver_df.drop(columns=["Hire_Date_Flag"])
-
-    output_file = "output.xlsx"  # ← define BEFORE using it
-    output_df.to_excel(output_file, index=False)
-
-    wb = load_workbook(output_file)
-    ws = wb.active
-
-    red_fill = PatternFill(start_color="FF0000",
-                        end_color="FF0000",
-                        fill_type="solid")
-
-    headers = [cell.value for cell in ws[1]]
-    hire_col = headers.index("Hire Date") + 1
-
-    for i, row in enumerate(ws.iter_rows(min_row=2), start=0):
-        if invalid_rows.iloc[i]:
-            row[hire_col - 1].fill = red_fill
-
-    wb.save(output_file)
-
+        lambda doh: doh.strftime("%m/%d/%Y") if pd.notnull(doh) and isinstance(doh, pd.Timestamp) else doh
+        )
     driver_df["Expiration Date"] = driver_df["Expiration Date"].apply(
-        lambda expd: expd.strftime("%m/%d/%Y") if pd.notnull(expd) and isinstance(expd, pd.Timestamp) else expd
-    )
-
-    mvr_data = output_df.to_dict(orient="records")  # ← use output_df not driver_df
+        lambda expd: expd.strftime("%m/%d/%Y") if pd.notnull(expd)  and isinstance(expd, pd.Timestamp) else expd
+        )
+    mvr_data = driver_df.to_dict(orient="records")
     return mvr_data
+
 
 def apply_formatting_mvr_owned(
     worksheet, min_col, max_col, start_row=None, end_row=None

@@ -129,7 +129,7 @@ def _render_header(title_plain, title_em, subtitle):
     <canvas id="starCanvas"></canvas>
     <div class="header-content">
         <p class="eyebrow">PDF Tools</p>
-        <h1 class="page-title"><em>{title_em}</em> {title_plain}</h1>
+        <h1 class="page-title">{title_em} {title_plain}</h1>
         <p class="page-subtitle">{subtitle}</p>
         <div class="rule-bottom"></div>
     </div>
