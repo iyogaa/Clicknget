@@ -600,9 +600,9 @@ def status_and_comments(row, has_heavy_vehicle):
     # Major > 0 (last 5 years) -> Pending
     if minor_count > 3 or major_count > 0:
         pending = True
-        # Add ALL violations comma-separated in Comments
-        if violation_desc:
-            comments.append(violation_desc)
+    #add all violation desc
+    if violation_desc:
+        comments.append(violation_desc)
 
     # 3. Medical Rules
     if med_status == "not certified":
@@ -1131,29 +1131,38 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
                     match_row_data = matching_row.iloc[0]
                     
                     for col in merged_drivers_df.columns:
-                        # Skip flags that we set in superset_drivers
+                        
                         if col in ["driver_list_flag", "mvr_list_flag"]:
                             continue
                             
-                        if col == "mvr_list_flag": # Handled skip above but just structurally logic check
+                        if col == "mvr_list_flag": 
                             pass
                         
                         elif col == "MVR Received":
                             merged_drivers_df.loc[i, col] = "TRUE"
                             
                         elif col == "Years of Tenure":
-                            # Calculate logic if needed, or preserve
                             pass
-                        elif col == "mvr_list_flag": # Should set to True since we found a match
-                             pass # We will set it explicitly below if we want, but logic later uses matching
-                        
+                        elif col == "mvr_list_flag":
+                            pass
                         else:
-                            # Copy data from MVR (grouped_df) to Driver Row
-                            # Except maybe we want to keep Driver List name/DOB?
-                            # Usually MVR data overwrites or fills application data?
-                            # Existing logic overwrote.
-                            merged_drivers_df.loc[i, col] = match_row_data[col]
-                            
+                            protected_cols = [
+                                "Hire Date",
+                                "Years of Tenure",
+                                "Years of Experience",
+                            ]
+
+                            if col in protected_cols:
+
+                                driver_value = driver_row[col] if col in driver_row else None
+
+                                if pd.notna(driver_value) and str(driver_value).strip() != "":
+                                    merged_drivers_df.loc[i, col] = driver_value
+                                else:
+                                    merged_drivers_df.loc[i, col] = match_row_data.get(col)
+
+                            else:
+                                merged_drivers_df.loc[i, col] = match_row_data.get(col)
                     merged_drivers_df.loc[i, "mvr_list_flag"] = True
                 else:
                     # No MVR match
