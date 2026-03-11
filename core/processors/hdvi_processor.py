@@ -13,7 +13,7 @@ blue_header_font = Font(name="Calibri", bold=True, size=10, color="FFFFFF")
 blue_header_fill = PatternFill(
     start_color="0033CCCC", end_color="0033CCCC", fill_type="solid"
 )
-def read_state_mapping(file_path="C:\\Users\\HP\\Clicknget\\core\\processors\\state_mapping.yaml"):
+def read_state_mapping(file_path="core/processors/state_mapping.yaml"):
     with open(file_path, 'r') as file:
         state_mapping = yaml.safe_load(file)
     return state_mapping
