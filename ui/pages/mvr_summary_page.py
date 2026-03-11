@@ -3,6 +3,7 @@ import streamlit.components.v1 as components
 from ui.pages.alltrans_page import run_mvr_all_trans
 from ui.pages.hdvi_page import run_hdvi_mvr
 from ui.pages.riscom_page import run_riscom_mvr
+from ui.pages.riscom_renewal_page import run_riscom_renewal_mvr
 
 
 def run_mvr_summary():
@@ -223,7 +224,7 @@ def run_mvr_summary():
     with col2:
         report_type = st.selectbox(
             "Choose MVR Report:",
-            options=["HDVI", "NB-Riscom", "Alltrans"],
+            options=["HDVI", "NB-Riscom", "Alltrans","Renewal-Riscom"],
             label_visibility="collapsed",
             key="mvr_report_selector"
         )
@@ -237,6 +238,8 @@ def run_mvr_summary():
             run_riscom_mvr()
         elif report_type == "Alltrans":
             run_mvr_all_trans()
+        elif report_type == "Renewal-Riscom":
+            run_riscom_renewal_mvr()
 
     except Exception as e:
         col1, col2 = st.columns([3, 1])
