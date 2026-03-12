@@ -600,7 +600,7 @@ def status_and_comments(row, has_heavy_vehicle):
     # Major > 0 (last 5 years) -> Pending
     if minor_count > 3 or major_count > 0:
         pending = True
-    #add all violation desc
+        # Add ALL violations comma-separated in Comments
     if violation_desc:
         comments.append(violation_desc)
 
@@ -770,7 +770,7 @@ def postprocess_mvr_data(mvr_data):
         if mvr_flag and not drv_flag:
             row["Status"] = "Pending"
             row["Comments"] = "Mvr received - driver not shown on application"
-            
+            row["MVR Received"] = "TRUE"
         # Rule 4: Eligible driver MVR not present
         elif drv_flag and not mvr_flag:
             row["Status"] = "Pending"
@@ -961,7 +961,6 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
         "Accident Count",
         "Violation Description"
     ]
-    # Calculate initial Status and Comments based on MVR data
 
     # Convert relevant columns to integers (handle NaN values)
     grouped_df["Accident Count"] = (
@@ -992,9 +991,7 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
     grouped_df["License Expiration Date"] = grouped_df["License Expiration Date"].apply(
         lambda expd: expd.strftime("%m/%d/%Y") if pd.notnull(expd) else ""
     )
-    grouped_df["Hire Date"] = grouped_df["Hire Date"].apply(
-        lambda expd: expd.strftime("%m/%d/%Y") if pd.notnull(expd) else ""
-    )
+    grouped_df["Hire Date"] = pd.to_datetime(grouped_df["Hire Date"], errors="coerce").dt.strftime("%m/%d/%Y").fillna("")
 
     # Add columns that do not have mappings and set them to None
     grouped_df["Years of Experience"] = None
@@ -1051,19 +1048,9 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
         "driver_list_flag",  # this column is just for supporting post logic
         "mvr_list_flag",  # this column is just for supporting post logic
     ]
-    #adddelete date
-        # Get proposed_effective_date from original data
-    proposed_effective_date = ""
-    if not df.empty and 'proposed_effective_date' in df.columns:
-        valid_dates = df['proposed_effective_date'].dropna()
-        if not valid_dates.empty:
-            proposed_effective_date = pd.to_datetime(valid_dates.iloc[0]).strftime("%m/%d/%Y")
-    
-    # Reorder columns first
+
+    # Reorder columns
     grouped_df = grouped_df[column_order]
-    
-    # Add AddDeleteDate column after Date MVR Ordered
-    grouped_df["Proposed Effective Date"] = proposed_effective_date
     
     # Calculate initial Status and Comments based on MVR data
     if vehicle_df is not None and not vehicle_df.empty and "Vehicle Body Type" in vehicle_df.columns and not vehicle_df["Vehicle Body Type"].isnull().all():
@@ -1088,6 +1075,20 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
             if 'Driver Full Name' in driver_df.columns:
                 driver_df[["Driver First Name", "Driver Last Name"]] = driver_df["Driver Full Name"].apply(
                     split_driver_name)
+            
+            # Normalize Hire Date
+            if 'Hire Date' in driver_df.columns:
+                driver_df["Hire Date"] = pd.to_datetime(driver_df["Hire Date"], errors="coerce") \
+                                            .dt.strftime("%m/%d/%Y").fillna("")
+
+            # Ensure Years of Experience exists
+            if 'Years of Experience' not in driver_df.columns:
+                driver_df['Years of Experience'] = ""
+
+            # Fill experience from Hire Date if missing
+            mask_no_exp = driver_df["Years of Experience"].isna() | (driver_df["Years of Experience"] == "")
+            driver_df.loc[mask_no_exp, "Years of Experience"] = driver_df.loc[mask_no_exp, "Hire Date"] \
+                .apply(lambda hd: calculate_age(hd) if hd else "")
             
             # Setup columns for driver_df
             driver_df["MVR Received"] = "FALSE"
@@ -1131,45 +1132,40 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
                     match_row_data = matching_row.iloc[0]
                     
                     for col in merged_drivers_df.columns:
-                        
+                        # Skip flags that we set in superset_drivers
                         if col in ["driver_list_flag", "mvr_list_flag"]:
                             continue
                             
-                        if col == "mvr_list_flag": 
+                        if col == "mvr_list_flag": # Handled skip above but just structurally logic check
                             pass
                         
                         elif col == "MVR Received":
                             merged_drivers_df.loc[i, col] = "TRUE"
                             
                         elif col == "Years of Tenure":
+                            # Calculate logic if needed, or preserve
                             pass
-                        elif col == "mvr_list_flag":
-                            pass
-                        else:
-                            protected_cols = [
-                                "Hire Date",
-                                "Years of Tenure",
-                                "Years of Experience",
-                            ]
-
-                            if col in protected_cols:
-
-                                driver_value = driver_row[col] if col in driver_row else None
-
-                                if pd.notna(driver_value) and str(driver_value).strip() != "":
-                                    merged_drivers_df.loc[i, col] = driver_value
-                                else:
-                                    merged_drivers_df.loc[i, col] = match_row_data.get(col)
-
+                        elif col == "mvr_list_flag": # Should set to True since we found a match
+                             pass # We will set it explicitly below if we want, but logic later uses matching
+                        elif col in ["Hire Date", "Years of Experience"]:
+                            drv_val = driver_row.get(col)
+                            if pd.notna(drv_val) and str(drv_val).strip() != "":
+                                merged_drivers_df.loc[i, col] = drv_val
                             else:
-                                merged_drivers_df.loc[i, col] = match_row_data.get(col)
+                                merged_drivers_df.loc[i, col] = match_row_data[col] 
+                        else:
+                            merged_drivers_df.loc[i, col] = match_row_data[col]
+                            
                     merged_drivers_df.loc[i, "mvr_list_flag"] = True
-                else:
-                    # No MVR match
+                # after match loop
+                if 'Hire Date' in merged_drivers_df.columns:
+                    merged_drivers_df["Hire Date"] = pd.to_datetime(
+                        merged_drivers_df["Hire Date"], errors="coerce"
+                    ).dt.strftime("%m/%d/%Y").fillna("")
+                if 'Years of Experience' in merged_drivers_df.columns:
+                    # leave as‑is – already filled above
                     pass
 
-                        # Add Proposed Effective Date to matched drivers
-            merged_drivers_df["Proposed Effective Date"] = proposed_effective_date
             mvr_data = merged_drivers_df.to_dict(orient="records")
             
             # Add unmatched MVR rows (MVRs that didn't match any driver in the list)
@@ -1179,19 +1175,15 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
                 unmatched_rows = unmatched_grouped_df.copy()
                 unmatched_rows['driver_list_flag'] = False
                 unmatched_rows['mvr_list_flag'] = True
-                                # Add Proposed Effective Date to unmatched MVRs
-                unmatched_rows["Proposed Effective Date"] = proposed_effective_date
                 mvr_data.extend(unmatched_rows.to_dict(orient="records"))
 
-            ''' Post logic '''
+            
             mvr_data = postprocess_mvr_data(mvr_data)
 
             # Cleanup
             mvr_data = filter_and_cleanup_mvr_data(mvr_data)
         else:
             # If Driver Df is empty/invalid, just return MVR data
-                        # Add Proposed Effective Date when no driver list
-            grouped_df["Proposed Effective Date"] = proposed_effective_date
             mvr_data = grouped_df.to_dict(orient="records")
     else:
         # If no driver list provided
@@ -1215,6 +1207,12 @@ def generate_report(output_dict, driver_df=None, vehicle_df=None, workbook=None,
         write_excel_sheet_mvr_owned(
             mvr_output_final, workbook, "Riscom MVR", "Riscom MVR", False, start_row=2, skip_blue_header=True
         )
+        if vehicle_df is not None and not vehicle_df.empty:
+            if "vehicles" not in workbook.sheetnames:
+                ws = workbook.create_sheet("vehicles")
+                for r_idx, row in enumerate(vehicle_df.itertuples(index=False), start=1):
+                    for c_idx, value in enumerate(row, start=1):
+                        ws.cell(row=r_idx, column=c_idx, value=value)
 
     # reorder sheets
     desired_order = ["Riscom MVR", "drivers", "vehicles", "MVR raw"]
@@ -1235,17 +1233,18 @@ def generate_report(output_dict, driver_df=None, vehicle_df=None, workbook=None,
 
 def process_riscom_mvr_data(mvr_file_buffer, original_wb):
     df = pd.read_excel(mvr_file_buffer, sheet_name="MVR raw", skiprows=1, dtype={'license_number': str})
-    # Reset buffer position for subsequent reads if necessary, though read_excel usually handles it. 
-    # But read_excel might not consume it all if sheet_name is specified? It reads the whole file usually.
-    # Safe to seek 0.
     mvr_file_buffer.seek(0)
     driver_df = pd.read_excel(mvr_file_buffer, sheet_name="drivers", skiprows=1, dtype={'License Number': str})
     
-    vehicle_df = None
+    mvr_file_buffer.seek(0)
+    try:
+        vehicle_df = pd.read_excel(mvr_file_buffer, sheet_name="vehicles", skiprows=1, dtype=str)
+    except Exception:  # sheet not found or read error
+        vehicle_df = None
 
     df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
 
-    sheets_to_keep = ["MVR raw", "drivers"]
+    sheets_to_keep = ["MVR raw", "drivers", "vehicles"]
     sheets_to_remove = [sheet for sheet in original_wb.sheetnames if sheet not in sheets_to_keep]
     
     for sheet_name in sheets_to_remove:
@@ -1297,7 +1296,8 @@ def download_report_mvr_renewal_riscom_test2(uploaded_file):
 
     if mvr_file_buffer is None or original_wb is None:
         raise Exception("MVR file not found or invalid format. Please upload a valid Excel or Zip file containing 'report_mvr...'.")
-
+    
+    mvr_file_buffer.seek(0)
     buffer, _ = process_riscom_mvr_data(mvr_file_buffer, original_wb)
     return [buffer]
 
