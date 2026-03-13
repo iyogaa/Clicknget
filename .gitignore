@@ -18,6 +18,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
+*.pyo
+*.pyd
+*.pyc
 
 # --- Virtual Environments ---
 venv/
@@ -85,7 +88,34 @@ ehthumbs.db
 Thumbs.db
 
 # --- Project Specific ---
-# Uncomment if you don't want to track these
-# Template.xlsx
-# *.xlsx
-# *.pdf
+# Test data files (exclude real data)
+test_output.xlsx
+*_testing.xlsx
+test_*.xlsx
+report_mvr_testing*.xlsx
+sample_*.xlsx
+
+# Generated output files
+output_*.xlsx
+generated_*.xlsx
+results_*.xlsx
+*_processed.xlsx
+
+# Testing directories
+testing/
+test_data/
+test_files/
+
+# Streamlit specific
+.streamlit/config.toml  # Only if it contains sensitive data
+
+# --- MVR Processor Specific ---
+# Excel files that might contain sensitive driver data
+*_mvr_*.xlsx
+mvr_*.xlsx
+driver_*.xlsx
+vehicle_*.xlsx
+
+# Cache files from processing
+.cache/
+processing_temp/

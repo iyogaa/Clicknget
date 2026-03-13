@@ -924,13 +924,33 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
     # Combine all descriptions into a single column, skipping empty values
     desc_cols = [
         "Minor Violation Description",
-        "Major Violation Description",
+        "Major Violation Description", 
         "Accident Violation Description"
     ]
-    grouped_df["violation_description"] = grouped_df[desc_cols].apply(
-        lambda row: ", ".join([str(val) for val in row if val and str(val).strip() != ""]), axis=1
-    )
+    
+    # Create combined violation description with proper handling
+    violation_descriptions = []
+    for idx, row in grouped_df.iterrows():
+        descriptions = []
+        for col in desc_cols:
+            if col in grouped_df.columns:
+                val = row[col]
+                if pd.notna(val) and str(val).strip() not in ["", "nan"]:
+                    clean_val = str(val).strip()
+                    if clean_val not in descriptions:  # Avoid duplicates
+                        descriptions.append(clean_val)
+        violation_descriptions.append(", ".join(descriptions) if descriptions else "")
+    
+    grouped_df["Violation Description"] = violation_descriptions
     grouped_df = grouped_df.drop(columns=desc_cols)
+
+    # EXTRACT PROPOSED EFFECTIVE DATE
+    proposed_date_val = ""
+    if 'proposed_effective_date' in df.columns and not df['proposed_effective_date'].empty:
+        tmp = pd.to_datetime(df['proposed_effective_date'], errors="coerce")
+        nonnull = tmp.dropna()
+        if not nonnull.empty:
+            proposed_date_val = nonnull.iloc[0].strftime("%m/%d/%Y")
 
     # Rename columns
     grouped_df.columns = [
@@ -1009,7 +1029,8 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
     grouped_df["Comments"] = None
     grouped_df['driver_list_flag'] = None
     grouped_df['mvr_list_flag'] = None
-    # Reorder columns to match the required order (using label keys)
+    
+    # Reorder columns to match the required order (using label keys) - INCLUDING PROPOSED EFFECTIVE DATE
     column_order = [
         "Date MVR Ordered",
         "Driver Full Name",
@@ -1045,9 +1066,13 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
         "Medical Status",
         "Restrictions",
         "Comments",
+        "Proposed Effective Date",  # ADD THIS TO COLUMN ORDER
         "driver_list_flag",  # this column is just for supporting post logic
         "mvr_list_flag",  # this column is just for supporting post logic
     ]
+
+    # ADD PROPOSED EFFECTIVE DATE COLUMN TO DATAFRAME
+    grouped_df["Proposed Effective Date"] = proposed_date_val or ""
 
     # Reorder columns
     grouped_df = grouped_df[column_order]
@@ -1065,8 +1090,6 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
     grouped_df["Date MVR Ordered"] = grouped_df["Date MVR Ordered"].apply(
         lambda expd: expd.strftime("%m/%d/%Y") if pd.notnull(expd) else ""
     )
-
-
 
     # Match with Driver List
     if driver_df is not None and not driver_df.empty:
@@ -1103,6 +1126,9 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
             # Get superset (formatted driver list)
             merged_drivers_df = superset_drivers(driver_df)
             
+            # ADD PROPOSED EFFECTIVE DATE TO DRIVER LIST
+            merged_drivers_df["Proposed Effective Date"] = proposed_date_val or ""
+            
             # Recalculate Age for merged dataframe
             merged_drivers_df["Age"] = merged_drivers_df["Driver Date of Birth"].apply(calculate_age)
 
@@ -1133,7 +1159,7 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
                     
                     for col in merged_drivers_df.columns:
                         # Skip flags that we set in superset_drivers
-                        if col in ["driver_list_flag", "mvr_list_flag"]:
+                        if col in ["driver_list_flag", "mvr_list_flag", "Proposed Effective Date"]:
                             continue
                             
                         if col == "mvr_list_flag": # Handled skip above but just structurally logic check
@@ -1175,6 +1201,7 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
                 unmatched_rows = unmatched_grouped_df.copy()
                 unmatched_rows['driver_list_flag'] = False
                 unmatched_rows['mvr_list_flag'] = True
+                unmatched_rows["Proposed Effective Date"] = proposed_date_val or ""
                 mvr_data.extend(unmatched_rows.to_dict(orient="records"))
 
             
@@ -1185,12 +1212,17 @@ def generate_mvr_data_sheet_for_drivers(df, driver_df, vehicle_df):
         else:
             # If Driver Df is empty/invalid, just return MVR data
             mvr_data = grouped_df.to_dict(orient="records")
+            # ADD PROPOSED EFFECTIVE DATE TO ALL ROWS
+            for row in mvr_data:
+                row["Proposed Effective Date"] = proposed_date_val or ""
     else:
         # If no driver list provided
         mvr_data = grouped_df.to_dict(orient="records")
+        # ADD PROPOSED EFFECTIVE DATE TO ALL ROWS
+        for row in mvr_data:
+            row["Proposed Effective Date"] = proposed_date_val or ""
         
     return mvr_data
-
 
 def generate_report(output_dict, driver_df=None, vehicle_df=None, workbook=None, xlsx_sheet_tabs=[]):
     if not workbook:
@@ -1242,7 +1274,7 @@ def process_riscom_mvr_data(mvr_file_buffer, original_wb):
     except Exception:  # sheet not found or read error
         vehicle_df = None
 
-    df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+    df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
 
     sheets_to_keep = ["MVR raw", "drivers", "vehicles"]
     sheets_to_remove = [sheet for sheet in original_wb.sheetnames if sheet not in sheets_to_keep]
