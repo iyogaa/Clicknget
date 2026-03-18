@@ -2,6 +2,7 @@ import streamlit as st
 import io
 from core.processors.alltrans_processor import Alltrans
 from openpyxl import load_workbook
+import pandas as pd
 
 def run_mvr_all_trans():
     
@@ -18,6 +19,8 @@ def run_mvr_all_trans():
         st.markdown("</div>", unsafe_allow_html=True)
         
         if main_file and lookup_file:
+            lookup_preview = pd.read_excel(io.BytesIO(lookup_file.getvalue()))
+            lookup_columns = list(lookup_preview.columns)
             
             chosen_sheet = None
             try:
@@ -44,13 +47,38 @@ def run_mvr_all_trans():
                         main_bytes = main_file.read()
                         lookup_bytes = lookup_file.read()
 
+                        st.markdown("### Column Mapping (Optional)")
+                        auto_detect = st.checkbox("Auto-detect columns", value=True)
+
+                        column_map = None
+
+                        if not auto_detect:
+                            st.markdown("### Manual Column Mapping")
+
+                            cdl_col = st.selectbox("Select CDL Column", lookup_columns)
+                            hire_col = st.selectbox("Select Hire Date Column", lookup_columns)
+                            state_col = st.selectbox("Select State Column", lookup_columns)
+
+                            column_map = {
+                                "cdl": cdl_col,
+                                "hire_date": hire_col,
+                                "state": state_col
+                            }
+
                         gen = Alltrans(template_path="Template.xlsx",
                                     alltrans_sheet="All Trans",
                                     alltrans_header_row=4,#Fixed constant row for Column Headers
-                                    mvr_sheet_name="MVR")
+                                    mvr_sheet_name="MVR",
+                                    interactive_mode=False)
                         
                         with st.spinner("Processing Alltrans..."):
-                            out = gen.run(main_bytes, lookup_bytes, chosen_lookup_sheet=chosen_sheet, preview_rows=8)
+                            out = gen.run(
+                                main_bytes,
+                                lookup_bytes,
+                                chosen_lookup_sheet=chosen_sheet,
+                                preview_rows=8,
+                                column_map=column_map
+                            )
 
                         original_name = getattr(main_file, "name", None)
                         base = original_name.rsplit(".", 1)[0] if original_name else "Final_Report"
