@@ -110,6 +110,7 @@ class Alltrans:
             self.logger.debug("Failed copying tab_color: %%s", e, exc_info=True)
         return dst_ws
 
+    #applying column mapping ~
     def _format_doh_for_excel(self, val):
         if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() == "":
             return None
@@ -123,10 +124,11 @@ class Alltrans:
                 s = str(val).strip()
                 return f"'{s}" if s != "" else None
             # Return in MM/DD/YYYY format without century issues
-            return ts.strftime('%m/%%d/%%Y')
+            return ts.strftime('%m/%d/%Y')  # Fixed: removed extra % signs
         except Exception:
             s = str(val).strip()
             return f"'{s}" if s != "" else None
+
 
     def _robust_read_df(self, file_bytes: bytes, sheet_name=None, header=None, nrows=None):
         """Try to read data from bytes as Excel first, then fall back to CSV."""
@@ -319,7 +321,7 @@ class Alltrans:
                 if col.strip().lower() == c.strip().lower():
                     return col
         for col in cols:
-            if "cdl" in col.strip().lower() or "license" in col.strip().lower() and "number" in col.strip().lower():
+            if "cdl" in col.strip().lower() or ("license" in col.strip().lower() and "number" in col.strip().lower()):
                 return col
         if sample_df is not None:
             for col in cols:
@@ -330,6 +332,7 @@ class Alltrans:
                 except Exception:
                     continue
         return None
+
 
     def _find_hire_col(self, cols):
         candidates = ["Hire Date", "HireDate", "DOH", "Date of Hire", "Hire_Date", "Driver Hire Date", "Driver Hire date", "Hire date", "Date Hired", "Employment Date", "Start Date", "Date of Join", "Joining Date", "Join Date"]
@@ -621,18 +624,6 @@ class Alltrans:
             except Exception as e:
                 print(f"Error: {e}. Please try again.")
 
-    def _safe_date_parse(self, date_str):
-        """Safely parse date string"""
-        if not date_str:
-            return None
-        try:
-            # Remove leading apostrophes
-            if isinstance(date_str, str) and date_str.startswith("'"):
-                date_str = date_str[1:]
-            return pd.to_datetime(date_str, errors="coerce")
-        except Exception:
-            return None
-
 # INSERT THIS METHOD HERE:
     def _normalize_name_for_matching(self, name):
         """Normalize names for better matching regardless of format"""
@@ -732,74 +723,39 @@ class Alltrans:
         lookup_df.columns = [str(c).strip() for c in lookup_df.columns]
 
         #promting user to select columns if not auto-detected
+
         lookup_cols = list(lookup_df.columns)
 
+        # Handle column mapping from user input comprehensively
+        cdl_col_lookup = None
+        hire_col_lookup = None
+        name_col_lookup = None
+        dob_col_lookup = None
+        state_col_lookup = None
+
         if column_map:
-            cdl_col_lookup = column_map.get("cdl")
-            hire_col_lookup = column_map.get("hire_date")
-            state_col_lookup = column_map.get("state")
-        else:
+            # Use user-provided column mappings
+            cdl_col_lookup = column_map.get("cdl") if column_map.get("cdl") in lookup_cols else None
+            hire_col_lookup = column_map.get("hire_date") if column_map.get("hire_date") in lookup_cols else None
+            name_col_lookup = column_map.get("name") if column_map.get("name") in lookup_cols else None
+            dob_col_lookup = column_map.get("dob") if column_map.get("dob") in lookup_cols else None
+            state_col_lookup = column_map.get("state") if column_map.get("state") in lookup_cols else None
+            
+            self.logger.info(f"Using user-provided column mapping: CDL={cdl_col_lookup}, Hire={hire_col_lookup}, Name={name_col_lookup}, DOB={dob_col_lookup}, State={state_col_lookup}")
+
+        # Auto-detection for any missing columns
+        if not cdl_col_lookup:
             cdl_col_lookup = self._find_cdl_col(lookup_cols, sample_df=lookup_df)
+
+        if not hire_col_lookup:
             hire_col_lookup = self._find_hire_col(lookup_cols)
+
+        if not state_col_lookup:
             state_col_lookup = self._find_state_col(lookup_cols)
 
-        # Handle column detection with optional interactive mode
-        try:
-            if hasattr(self, 'interactive_mode') and self.interactive_mode:
-                print("\n=== Client Data Column Detection ===")
-                
-                # Name column selection
-                name_col_candidates = [c for c in lookup_cols if any(keyword in str(c).lower() for keyword in ["name", "employee", "driver"])]
-                if name_col_candidates and len(name_col_candidates) == 1:
-                    name_col = name_col_candidates[0]
-                    print(f"Auto-detected name column: {name_col}")
-                else:
-                    name_col = self._select_column_interactive(lookup_cols, "Select the NAME column:")
-                
-                # DOB column selection  
-                dob_col_candidates = [c for c in lookup_cols if any(keyword in str(c).lower() for keyword in ["dob", "birth", "date"])]
-                if dob_col_candidates and len(dob_col_candidates) == 1:
-                    dob_col = dob_col_candidates[0]
-                    print(f"Auto-detected DOB column: {dob_col}")
-                else:
-                    dob_col = self._select_column_interactive(lookup_cols, "Select the DATE OF BIRTH column:")
-                
-                # CDL column selection
-                cdl_col_candidates = [c for c in lookup_cols if any(keyword in str(c).lower() for keyword in ["license", "cdl", "driver license"])]
-                if cdl_col_candidates and len(cdl_col_candidates) == 1:
-                    cdl_col_lookup = cdl_col_candidates[0]
-                    print(f"Auto-detected CDL column: {cdl_col_lookup}")
-                else:
-                    cdl_col_lookup = self._select_column_interactive(lookup_cols, "Select the DRIVER LICENSE NUMBER column:")
-                
-                # Hire date column selection
-                hire_col_candidates = [c for c in lookup_cols if any(keyword in str(c).lower() for keyword in ["hire", "employment", "start"])]
-                if hire_col_candidates and len(hire_col_candidates) == 1:
-                    hire_col_lookup = hire_col_candidates[0]
-                    print(f"Auto-detected Hire Date column: {hire_col_lookup}")
-                else:
-                    hire_col_lookup = self._select_column_interactive(lookup_cols, "Select the HIRE DATE column (optional):")
-                    if not hire_col_lookup:
-                        hire_col_lookup = None
-            else:
-                # Original auto-detection logic
-                cdl_col_lookup = self._find_cdl_col(lookup_cols, sample_df=lookup_df)
-                hire_col_lookup = self._find_hire_col(lookup_cols)
-                state_col_lookup = self._find_state_col(lookup_cols)
-                
-        except Exception as e:
-            # Fallback to auto-detection if interactive mode fails
-            self.logger.warning(f"Interactive mode failed: {e}. Falling back to auto-detection.")
-            cdl_col_lookup = self._find_cdl_col(lookup_cols, sample_df=lookup_df)
-            hire_col_lookup = self._find_hire_col(lookup_cols)
-            state_col_lookup = self._find_state_col(lookup_cols)
+        # Log the final column assignments
+        self.logger.info(f"Final column assignments - CDL: {cdl_col_lookup}, Hire: {hire_col_lookup}, State: {state_col_lookup}")
 
-        
-        if hire_col_lookup is None:
-            self.logger.warning("Could not detect Hire Date column in lookup automatically.")
-        
-        if cdl_col_lookup is None:
-            self.logger.warning("Could not detect CDL column in lookup. CDL matching will be skipped.")
 
         # normalize lookup keys and detect duplicates
         if cdl_col_lookup:
@@ -813,54 +769,81 @@ class Alltrans:
         lookup_small = lookup_df.drop_duplicates("_cdl_key", keep="first").copy()
         lookup_rows = lookup_df.to_dict(orient="records")
 
+        
+        # Update the lookup rows processing to handle all column mappings:
         for r in lookup_rows:
-            r["_cdl_key_norm"] = str(r.get("_cdl_key", "")).strip()
+            # Handle CDL key with mapped column
+            if column_map and column_map.get("cdl") and column_map["cdl"] in lookup_df.columns:
+                r["_cdl_key"] = str(r.get(column_map["cdl"], "")).strip()
+            else:
+                # Use original logic if no mapping provided
+                cdl_col_from_detection = self._find_cdl_col(lookup_cols, sample_df=lookup_df)
+                if cdl_col_from_detection:
+                    r["_cdl_key"] = str(r.get(cdl_col_from_detection, "")).strip()
+                else:
+                    r["_cdl_key"] = ""
             
-            # Identify name columns more carefully
-            cols_lower = {c: str(c).lower().strip() for c in lookup_df.columns}
+            r["_cdl_key_norm"] = self._clean_cdl_key(str(r.get("_cdl_key", "")).strip())
             
-            first_col = next((c for c, cl in cols_lower.items() if "first" in cl and "name" in cl), None)
-            if not first_col: first_col = next((c for c, cl in cols_lower.items() if "first" in cl), None)
-            
-            middle_col = next((c for c, cl in cols_lower.items() if "middle" in cl), None)
-            
-            last_col = next((c for c, cl in cols_lower.items() if "last" in cl and "name" in cl), None)
-            if not last_col: last_col = next((c for c, cl in cols_lower.items() if "last" in cl), None)
-            
-            # Explicit Full Name column candidates
-            full_name_col = next((c for c, cl in cols_lower.items() if "full" in cl and "name" in cl), None)
-            if not full_name_col:
-                full_name_col = next((c for c, cl in cols_lower.items() if "driver" in cl and "name" in cl and "first" not in cl and "last" not in cl), None)
-            
-            # Generic Name column (fallback)
-            generic_name_col = next((c for c, cl in cols_lower.items() if "name" in cl and "first" not in cl and "last" not in cl and "middle" not in cl and "file" not in cl), None)
+            # Handle name with mapped column
+            if column_map and column_map.get("name") and column_map["name"] in lookup_df.columns:
+                use_name = r.get(column_map["name"])
+                r["_lookup_name"] = str(use_name).strip() if use_name else None
+            else:
+                # Original logic for name detection
+                cols_lower = {c: str(c).lower().strip() for c in lookup_df.columns}
+                
+                # Try to find name columns
+                first_col = next((c for c, cl in cols_lower.items() if "first" in cl and "name" in cl), None)
+                if not first_col: first_col = next((c for c, cl in cols_lower.items() if "first" in cl), None)
+                
+                middle_col = next((c for c, cl in cols_lower.items() if "middle" in cl), None)
+                last_col = next((c for c, cl in cols_lower.items() if "last" in cl and "name" in cl), None)
+                if not last_col: last_col = next((c for c, cl in cols_lower.items() if "last" in cl), None)
+                
+                # Explicit Full Name column candidates
+                full_name_col = next((c for c, cl in cols_lower.items() if "full" in cl and "name" in cl), None)
+                if not full_name_col:
+                    full_name_col = next((c for c, cl in cols_lower.items() if "driver" in cl and "name" in cl and "first" not in cl and "last" not in cl), None)
+                if not full_name_col:
+                    full_name_col = next((c for c, cl in cols_lower.items() if "employee" in cl and "name" in cl), None)
+                
+                # Generic Name column (fallback)
+                generic_name_col = next((c for c, cl in cols_lower.items() if "name" in cl and "first" not in cl and "last" not in cl and "middle" not in cl and "file" not in cl), None)
 
-            parts = []
-            if first_col: parts.append(first_col)
-            if middle_col: parts.append(middle_col)
-            if last_col: parts.append(last_col)
+                parts = []
+                if first_col: parts.append(first_col)
+                if middle_col: parts.append(middle_col)
+                if last_col: parts.append(last_col)
+                
+                built_name = self._build_full_name(r, parts) if parts else None
+                raw_full_name = r.get(full_name_col) if full_name_col else None
+                raw_generic_name = r.get(generic_name_col) if generic_name_col else None
+                
+                # Priority: 
+                # 1. Explicit Full Name column
+                # 2. Constructed from First/Last
+                # 3. Generic "Name" column
+                use_name = None
+                if raw_full_name and str(raw_full_name).strip():
+                    use_name = raw_full_name
+                elif built_name and str(built_name).strip():
+                    use_name = built_name
+                elif raw_generic_name and str(raw_generic_name).strip():
+                    use_name = raw_generic_name
+                
+                r["_lookup_name"] = use_name
             
-            built_name = self._build_full_name(r, parts) if parts else None
-            raw_full_name = r.get(full_name_col) if full_name_col else None
-            raw_generic_name = r.get(generic_name_col) if generic_name_col else None
+            r["_lookup_fullname_std"] = self._std_upper(r["_lookup_name"]) if r["_lookup_name"] else ""
             
-            # Priority: 
-            # 1. Explicit Full Name column
-            # 2. Constructed from First/Last
-            # 3. Generic "Name" column
-            use_name = None
-            if raw_full_name and str(raw_full_name).strip():
-                use_name = raw_full_name
-            elif built_name and str(built_name).strip():
-                use_name = built_name
-            elif raw_generic_name and str(raw_generic_name).strip():
-                use_name = raw_generic_name
+            # Handle DOB with mapped column
+            if column_map and column_map.get("dob") and column_map["dob"] in lookup_df.columns:
+                dob_val = r.get(column_map["dob"])
+            else:
+                # Auto-detect DOB column
+                dob_col = next((c for c in lookup_df.columns if any(k in str(c).lower() for k in ("dob","date of birth","birth"))), None)
+                dob_val = r.get(dob_col) if dob_col else None
             
-            r["_lookup_name"] = use_name
-            r["_lookup_fullname_std"] = self._std_upper(use_name) if use_name else ""
-            
-            dob_col = next((c for c in lookup_df.columns if any(k in str(c).lower() for k in ("dob","date of birth","birth"))), None)
-            dob_val = r.get(dob_col) if dob_col else None
             try:
                 dt = pd.to_datetime(dob_val, errors="coerce")
                 r["_lookup_dob"] = dt.strftime("%m/%d/%Y") if not pd.isna(dt) else None
@@ -869,9 +852,24 @@ class Alltrans:
                 r["_lookup_dob"] = str(dob_val) if dob_val is not None else None
 
             r["_lookup_dob_iso"] = self._dob_iso(dob_val)
-            # Safe extraction of Hire Date
-            r["_hire_raw"] = r.get(hire_col_lookup) if hire_col_lookup else ""
+            
+            # Handle Hire Date with mapped column
+            if column_map and column_map.get("hire_date") and column_map["hire_date"] in lookup_df.columns:
+                hire_val = r.get(column_map["hire_date"])
+            else:
+                hire_val = r.get(hire_col_lookup) if hire_col_lookup else None
+            
+            r["_hire_raw"] = hire_val
+            
+            # Handle State with mapped column
+            if column_map and column_map.get("state") and column_map["state"] in lookup_df.columns:
+                state_val = r.get(column_map["state"])
+                r["_lookup_state"] = state_val
+            else:
+                state_val = r.get(state_col_lookup) if state_col_lookup else None
+                r["_lookup_state"] = state_val
 
+        # end of lookup row processing
         # build direct CDL map (safely)
         lookup_map = {}
         if hire_col_lookup and hire_col_lookup in lookup_small.columns:
@@ -1130,6 +1128,7 @@ class Alltrans:
                         df_records.at[idx, "Driver Date of Birth"] = str(lookup_dob)
 
         # Phase 3: Remaining lookup records become separate entries
+        # Phase 3: Remaining lookup records become separate entries
         unmatched_lookup_rows = []
         for i, lr in enumerate(lookup_rows):
             if i in matched_lookup_indices:
@@ -1140,8 +1139,8 @@ class Alltrans:
                 "Driver Full Name": self._get_best_name_from_lookup(lr, lookup_df),
                 "Driver Date of Birth": str(lr.get("_lookup_dob", "")) if lr.get("_lookup_dob") else None,
                 "CDL Number": lr.get("_cdl_key_norm"),
+                "Lic State": lr.get("_lookup_state") if lr.get("_lookup_state") else None,  # Add state
                 "CDL Type": None,
-                "Lic State": lr.get(state_col_lookup) if state_col_lookup else None,
                 "Passenger Endt": None,
                 "School Bus Endt": None,
                 "LIC Status": None,
@@ -1151,8 +1150,8 @@ class Alltrans:
                 "# MAJOR Violations": None,
                 "YES": None,
                 "NO": None,
-                "DOH_raw": str(lr.get(hire_col_lookup, "")) if hire_col_lookup else "",
-                "DOH": self._format_doh_for_excel(lr.get(hire_col_lookup, "")),
+                "DOH_raw": str(lr.get("_hire_raw", "")) if lr.get("_hire_raw") else "",
+                "DOH": self._format_doh_for_excel(lr.get("_hire_raw", "")),
                 "MatchedBy": "LookupOnly"
             }
             append_rec["Age"] = self._compute_age_from_str_dob(append_rec["Driver Date of Birth"])
